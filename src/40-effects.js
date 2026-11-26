@@ -7,6 +7,7 @@
     'easing',
     'yoyo',
     'repeat',
+    'repeatDelay',
     'hold',
     'onStart',
     'onUpdate',
@@ -43,6 +44,7 @@
       this.ease = resolveEase(cfg.ease || cfg.easing);
       this.yoyo = !!cfg.yoyo;
       this.repeat = cfg.repeat === undefined ? 0 : cfg.repeat;
+      this.repeatDelay = cfg.repeatDelay || 0;
       this.hold = cfg.hold || 0;
       this.persist = !!cfg.persist;
       this.onStart = cfg.onStart || null;
@@ -109,7 +111,11 @@
           if (typeof prop.start === 'number' && typeof prop.end === 'number') {
             this._write(target, key, value);
           } else if (typeof prop.start === 'string' && typeof prop.end === 'string') {
-            this._write(target, key, MathUtils.lerp(0, 1, eased) < 0.5 ? prop.start : prop.end);
+            if (isColorString(prop.start) && isColorString(prop.end)) {
+              this._write(target, key, colorToCss(lerpColor(prop.start, prop.end, eased)));
+            } else {
+              this._write(target, key, eased < 0.5 ? prop.start : prop.end);
+            }
           }
         });
       });
@@ -157,7 +163,8 @@
           this.direction = 1;
           this.elapsed = 0;
           if (this.onRepeat) this.onRepeat(this, this.repeatCount);
-          if (this.hold > 0) this.holdElapsed = this.hold;
+          const pause = Math.max(this.hold, this.repeatDelay);
+          if (pause > 0) this.holdElapsed = pause;
           return;
         }
         this.state = 'complete';
@@ -565,6 +572,13 @@
       this.events.emit('stop-all');
       return this;
     }
+  }
+
+  /** True for '#rgb', '#rrggbb', '#rrggbbaa', 'rgb(...)' and 'rgba(...)'. */
+  function isColorString(value) {
+    if (typeof value !== 'string') return false;
+    const text = value.trim();
+    return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || /^rgba?\(/i.test(text);
   }
 
   function parseColor(value) {

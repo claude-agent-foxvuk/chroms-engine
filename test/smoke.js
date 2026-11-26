@@ -163,7 +163,7 @@ global.localStorage = (() => {
 })();
 
 const Chroms = require(path.join(__dirname, '..', 'chroms.js'));
-assert.strictEqual(Chroms.version, '1.1.3');
+assert.strictEqual(Chroms.version, '1.2.0');
 assert.ok(Chroms.describe().systems.physics.includes('AABB'));
 
 const parent = createElement('div');
@@ -392,7 +392,7 @@ assert.ok(sceneRef.scoreText.text.length > 0, 'typewriter should reveal text');
 
 assert.ok(game.screenshot().startsWith('data:image/png'));
 
-// --- 1.1.3 regressions ---
+// --- 1.2.0 regressions ---
 
 // A hold keeps the end value before a yoyo leg starts.
 const holder = { value: 0 };
@@ -475,7 +475,7 @@ const manifest = Chroms.describe();
 assert.ok(manifest.inspiration.indexOf('Phaser 3') !== -1, 'manifest should credit Phaser 3');
 assert.ok(manifest.systems.add.indexOf('animatedSprite') !== -1, 'manifest should list animatedSprite');
 
-// --- 1.1.3 regressions ---
+// --- 1.2.0 regressions ---
 
 // Manual stepping advances one frame without requestAnimationFrame.
 const updatesBeforeStep = sceneRef.updateCount;
@@ -522,6 +522,242 @@ assert.ok(cancelHandlers.length > 0, 'pointercancel should be listened for');
 cancelHandlers.forEach((handler) => handler({ pointerId: 9 }));
 assert.strictEqual(sceneRef.input.pointers.has(9), false, 'pointercancel clears the pointer');
 assert.strictEqual(sceneRef.input.pointer.isDown, false, 'pointercancel releases the pointer');
+
+// --- 1.2.0 ---
+
+// Collision layers and masks filter pairs.
+const ghost = sceneRef.add.sprite(sceneRef.player.x, sceneRef.player.y, 40, 40, '#ffffff');
+const ghostBody = ghost.enablePhysics({ immovable: true });
+ghostBody.setCollisionGroup('ghost');
+ghostBody.setCollidesWith(['nothing']);
+assert.strictEqual(
+  sceneRef.physics.overlap(sceneRef.player, ghost),
+  false,
+  'collidesWith should block the pair'
+);
+ghostBody.setCollidesWith(['*']);
+assert.strictEqual(
+  sceneRef.physics.overlap(sceneRef.player, ghost),
+  true,
+  'collidesWith "*" should allow the pair'
+);
+
+// The world collision matrix filters by group name.
+const playerBody = sceneRef.player.body;
+playerBody.setCollisionGroup('player');
+ghostBody.setCollidesWith(null);
+sceneRef.physics.setCollisionMatrix({ player: ['ghost'], ghost: ['player'] });
+assert.strictEqual(
+  sceneRef.physics.overlap(sceneRef.player, ghost),
+  true,
+  'matrix should allow player/ghost'
+);
+sceneRef.physics.setCollisionMatrix({ player: ['wall'] });
+assert.strictEqual(
+  sceneRef.physics.overlap(sceneRef.player, ghost),
+  false,
+  'matrix should block player/ghost'
+);
+sceneRef.physics.setCollisionMatrix(null);
+playerBody.setCollisionGroup(null);
+ghostBody.setCollisionGroup(null);
+ghost.destroy();
+
+// Steering helpers.
+const mover = sceneRef.add.sprite(20, 20, 10, 10, '#ffffff');
+const moverBody = mover.enablePhysics({});
+assert.strictEqual(sceneRef.physics.moveTo(mover, 200, 20, 100), false);
+assert.ok(moverBody.velocity.x > 0, 'moveTo should aim at the target');
+moverBody.setVelocityFromAngle(90, 50);
+assert.ok(Math.abs(moverBody.velocity.x) < 1e-9, 'angle 90 has no x velocity');
+assert.ok(Math.abs(moverBody.velocity.y - 50) < 1e-9, 'angle 90 points down');
+assert.strictEqual(sceneRef.physics.moveTo(mover, moverBody.centerX, moverBody.centerY, 100), true);
+assert.strictEqual(moverBody.speed, 0, 'arriving should stop the body');
+
+// Slider: drag, step snapping and onChange.
+const slider = sceneRef.add.slider(100, 560, 200, { min: 0, max: 100, value: 20, step: 5 });
+assert.strictEqual(slider.getValue(), 20);
+slider.setValue(53);
+assert.strictEqual(slider.getValue(), 55, 'slider step should snap');
+let sliderValue = null;
+slider.onChange = (value) => {
+  sliderValue = value;
+};
+sceneRef.input.pointer.worldX = 200;
+sceneRef.input.pointer.worldY = 570;
+sceneRef.input.pointer.isDown = true;
+sceneRef.input.pointer.justDown = true;
+slider.update(0.016);
+sceneRef.input.pointer.justDown = false;
+assert.strictEqual(slider.dragging, true, 'slider should start dragging on press');
+slider.update(0.016);
+assert.strictEqual(sliderValue, 50, 'slider should report the dragged value');
+sceneRef.input.pointer.isDown = false;
+slider.update(0.016);
+assert.strictEqual(slider.dragging, false, 'slider should stop dragging on release');
+
+// ProgressBar clamps.
+const bar = sceneRef.add.progressBar(20, 560, 180, 12, { value: 0.25 });
+assert.strictEqual(bar.getValue(), 0.25);
+bar.setValue(1.4);
+assert.strictEqual(bar.getValue(), 1, 'progress should clamp to 1');
+bar.setValue(-2);
+assert.strictEqual(bar.getValue(), 0, 'progress should clamp to 0');
+
+// Toggle flips on press and animates its knob.
+let toggled = null;
+const toggle = sceneRef.add.toggle(300, 560, {
+  onChange: (value) => {
+    toggled = value;
+  }
+});
+sceneRef.input.pointer.worldX = 310;
+sceneRef.input.pointer.worldY = 570;
+sceneRef.input.pointer.isDown = true;
+sceneRef.input.pointer.justDown = true;
+toggle.update(0.016);
+sceneRef.input.pointer.justDown = false;
+sceneRef.input.pointer.isDown = false;
+assert.strictEqual(toggle.getValue(), true, 'toggle should flip on press');
+assert.strictEqual(toggled, true, 'toggle should call onChange');
+toggle.update(0.5);
+assert.strictEqual(toggle._knob, 1, 'toggle knob should animate to on');
+
+// Polygon geometry and hit testing.
+const polygon = sceneRef.add.polygon(
+  600,
+  400,
+  [[0, 0], [40, 0], [20, 30]],
+  { color: '#89b4fa' }
+);
+assert.strictEqual(polygon.width, 40);
+assert.strictEqual(polygon.height, 30);
+assert.ok(polygon.getArea() > 0, 'polygon area should be positive');
+assert.strictEqual(polygon.containsPoint(20, 10), true, 'polygon contains an inner point');
+assert.strictEqual(polygon.containsPoint(1, 25), false, 'polygon rejects an outer point');
+
+// Sprite tinting renders through an offscreen canvas.
+sceneRef.load.images.tinted = { width: 8, height: 8 };
+const tintedSprite = sceneRef.add.sprite(10, 400, 8, 8, 'tinted');
+tintedSprite.setTint('#ff0000');
+const drawsBeforeTint = calls.drawImage;
+tintedSprite.render(game.ctx);
+assert.ok(calls.drawImage > drawsBeforeTint, 'tinted sprite should draw');
+assert.ok(tintedSprite._tintCache && tintedSprite._tintCache.canvas, 'tint should be cached');
+tintedSprite.clearTint();
+assert.strictEqual(tintedSprite.tint, null);
+tintedSprite.destroy();
+delete sceneRef.load.images.tinted;
+
+// setInteractive emits pointerover/click and unregisters on destroy.
+const interactive = sceneRef.add.rect(400, 200, 40, 40, '#ffffff');
+const seen = [];
+interactive.setInteractive({
+  onClick: () => seen.push('click'),
+  onHover: () => seen.push('over')
+});
+sceneRef.input.pointer.worldX = 410;
+sceneRef.input.pointer.worldY = 210;
+sceneRef.input.update();
+assert.deepStrictEqual(seen, ['over'], 'interactive should emit pointerover');
+sceneRef.input.pointer.justDown = true;
+sceneRef.input.pointer.isDown = true;
+sceneRef.input.update();
+sceneRef.input.pointer.justDown = false;
+sceneRef.input.pointer.isDown = false;
+sceneRef.input.pointer.justUp = true;
+sceneRef.input.update();
+sceneRef.input.pointer.justUp = false;
+assert.deepStrictEqual(seen.slice(1), ['click'], 'interactive should emit click');
+interactive.destroy();
+assert.strictEqual(
+  sceneRef.input._interactive.indexOf(interactive),
+  -1,
+  'destroy should unregister interactive objects'
+);
+
+// Key chords.
+sceneRef.input.addKeyCombo('dash', ['ShiftLeft', 'KeyD']);
+sceneRef.input.keys.ShiftLeft = true;
+sceneRef.input.keys.KeyD = true;
+sceneRef.input.justPressed.KeyD = true;
+assert.strictEqual(sceneRef.input.keyComboDown('dash'), true);
+assert.strictEqual(sceneRef.input.keyComboJustDown('dash'), true);
+sceneRef.input.justPressed.KeyD = false;
+assert.strictEqual(sceneRef.input.keyComboJustDown('dash'), false);
+sceneRef.input.keys.ShiftLeft = false;
+sceneRef.input.keys.KeyD = false;
+
+// Color tweens interpolate instead of flipping at 50%.
+const colorHolder = { color: '#000000' };
+const colorTween = sceneRef.tweens.add({
+  targets: colorHolder,
+  color: '#ffffff',
+  duration: 100
+});
+colorTween.update(50);
+assert.ok(colorHolder.color.startsWith('rgba('), 'color tween should interpolate, got ' + colorHolder.color);
+colorTween.stop();
+
+// repeatDelay holds the end value before the next repeat.
+const repeatHolder = { value: 0 };
+const repeatTween = sceneRef.tweens.add({
+  targets: repeatHolder,
+  value: 10,
+  duration: 50,
+  repeat: 1,
+  repeatDelay: 100
+});
+repeatTween.update(50);
+assert.strictEqual(repeatHolder.value, 10, 'first leg should finish');
+repeatTween.update(50);
+assert.strictEqual(repeatHolder.value, 10, 'repeatDelay should hold the end value');
+repeatTween.update(60);
+assert.notStrictEqual(repeatTween.state, 'complete', 'the repeat should still be running');
+repeatTween.stop();
+
+// Storage snapshots.
+game.storage.save('progress', { level: 3 });
+const snapshot = game.storage.export();
+assert.deepStrictEqual(snapshot.progress, { level: 3 });
+game.storage.clear();
+assert.strictEqual(game.storage.load('progress', null), null);
+game.storage.import(snapshot);
+assert.deepStrictEqual(game.storage.load('progress'), { level: 3 });
+game.storage.remove('progress');
+
+// Music pause/resume.
+game.load.audios.song = new global.Audio();
+const musicHandle = game.sound.musicPlay('song', { volume: 0.5 });
+assert.ok(musicHandle, 'music should play');
+game.sound.musicPause();
+assert.strictEqual(game.sound.isMusicPlaying(), false, 'musicPause should pause');
+game.sound.musicResume();
+assert.strictEqual(game.sound.isMusicPlaying(), true, 'musicResume should resume');
+game.sound.stopMusic();
+delete game.load.audios.song;
+
+// Tilemap object layers.
+const objectMap = sceneRef.add.tilemap(
+  {
+    tileWidth: 16,
+    tileHeight: 16,
+    width: 4,
+    height: 4,
+    layers: [
+      { name: 'objects', data: [], objects: [{ name: 'spawn', x: 32, y: 64 }] }
+    ]
+  },
+  0,
+  0
+);
+assert.strictEqual(objectMap.getObjects('objects').length, 1);
+assert.strictEqual(objectMap.getObjectByName('spawn').x, 32);
+objectMap.destroy();
+
+sceneRef.input.pointer.isDown = false;
+sceneRef.input.pointer.justDown = false;
+sceneRef.input.pointer.justUp = false;
 
 // Scene switching + cleanup.
 class SecondScene extends Chroms.Scene {
@@ -586,6 +822,79 @@ assert.strictEqual(caughtErrors.length, 1, 'the same error should not be re-emit
 brokenGame.clearError();
 assert.strictEqual(brokenGame.lastError, null, 'clearError should dismiss the overlay');
 brokenGame.destroy();
+
+// Multiple active scenes: launch, stack order, pause and stop.
+class WorldScene extends Chroms.Scene {
+  constructor() {
+    super('world');
+  }
+  create() {
+    this.updates = 0;
+    this.physics.setBounds(0, 0, 200, 200);
+    this.player = this.add.rect(0, 0, 10, 10, '#ffffff');
+    this.player.enablePhysics({ velocityX: 120, collideWorldBounds: true });
+  }
+  update() {
+    this.updates += 1;
+  }
+}
+class HudScene extends Chroms.Scene {
+  constructor() {
+    super('hud');
+  }
+  create() {
+    this.updates = 0;
+    this.add.text(0, 0, 'HUD');
+  }
+  update() {
+    this.updates += 1;
+  }
+}
+const multiGame = new Chroms.Game({
+  width: 200,
+  height: 200,
+  parent,
+  scene: [WorldScene],
+  autoStart: false,
+  scaleMode: 'none',
+  debug: false
+});
+const world = multiGame.currentScene;
+multiGame.addScene(HudScene);
+const hud = multiGame.launchScene('hud');
+assert.strictEqual(multiGame.sceneStack.length, 2, 'launch should stack scenes');
+assert.strictEqual(multiGame.currentScene.key, 'hud', 'the launched scene renders on top');
+assert.strictEqual(hud.isActive(), true, 'launched scene is active');
+assert.strictEqual(world.isActive(), true, 'the previous scene stays active');
+const worldUpdates = world.updates;
+const hudUpdates = hud.updates;
+multiGame.step(0.05);
+assert.strictEqual(world.updates, worldUpdates + 1, 'both active scenes update');
+assert.strictEqual(hud.updates, hudUpdates + 1, 'both active scenes update');
+assert.ok(world.player.x > 0, 'world bodies simulate');
+
+// Pausing one scene freezes its bodies and leaves the others running.
+multiGame.pauseScene('world');
+const worldX = world.player.x;
+const worldUpdateCount = world.updates;
+const hudUpdateCount = hud.updates;
+multiGame.step(0.05);
+assert.strictEqual(world.player.x, worldX, 'paused scene bodies should freeze');
+assert.strictEqual(world.updates, worldUpdateCount, 'paused scene should not update');
+assert.strictEqual(hud.updates, hudUpdateCount + 1, 'other scenes keep updating');
+multiGame.resumeScene('world');
+
+// Reordering and stopping.
+multiGame.bringToTop('world');
+assert.strictEqual(multiGame.currentScene.key, 'world');
+assert.deepStrictEqual(multiGame.sceneStack, ['hud', 'world']);
+multiGame.stopScene('hud');
+assert.strictEqual(multiGame.sceneStack.length, 1);
+assert.strictEqual(hud.isActive(), false, 'stopped scene leaves the stack');
+assert.strictEqual(multiGame.currentScene.key, 'world');
+multiGame.stopScene('world');
+assert.strictEqual(multiGame.currentScene, null);
+multiGame.destroy();
 
 game.destroy();
 assert.ok(!game.running);

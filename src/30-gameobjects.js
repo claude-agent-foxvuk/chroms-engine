@@ -46,6 +46,9 @@
       this.parent = null;
       this.group = null;
       this.isDragged = false;
+      this.isHovered = false;
+      this._interactive = null;
+      this._interactivePressed = false;
       this.events = new EventEmitter();
     }
 
@@ -251,6 +254,24 @@
       else this.scene.input.enableDrag(this, options);
       return this;
     }
+    /**
+     * Emit pointerover/pointerout/pointerdown/pointerup/click for this object.
+     * Options: hitArea(localX, localY, object), offsetX, offsetY,
+     * onClick, onHover, onOut, onDown, onUp.
+     */
+    setInteractive(options) {
+      const opts = options === undefined || options === true ? {} : options;
+      this._interactive = Object.assign({ enabled: true }, opts);
+      this.isHovered = false;
+      if (this.scene && this.scene.input) this.scene.input.addInteractive(this);
+      return this;
+    }
+    disableInteractive() {
+      if (this.scene && this.scene.input) this.scene.input.removeInteractive(this);
+      if (this._interactive) this._interactive.enabled = false;
+      this.isHovered = false;
+      return this;
+    }
 
     getBounds() {
       return { x: this.x, y: this.y, width: this.displayWidth, height: this.displayHeight };
@@ -289,6 +310,7 @@
       if (this.destroyed) return this;
       this.destroyed = true;
       this.active = false;
+      if (this.scene && this.scene.input) this.scene.input.removeInteractive(this);
       this.events.emit('destroy', this, fromScene);
       if (this.body) {
         this.body.destroy();
@@ -313,13 +335,57 @@
       this.frame = null;
       this.flipX = false;
       this.flipY = false;
+      this.tint = null;
       this._anim = null;
+      this._tintCache = null;
     }
 
     setTexture(texture, frame) {
       this.texture = texture;
       this.frame = frame === undefined ? null : frame;
+      this._tintCache = null;
       return this;
+    }
+    /** Multiply the texture by a color (cached per frame). */
+    setTint(color) {
+      this.tint = color || null;
+      this._tintCache = null;
+      return this;
+    }
+    clearTint() {
+      this.tint = null;
+      this._tintCache = null;
+      return this;
+    }
+    _tintedSource(image, sx, sy, sw, sh) {
+      const cache = this._tintCache;
+      if (
+        cache &&
+        cache.image === image &&
+        cache.color === this.tint &&
+        cache.sx === sx &&
+        cache.sy === sy &&
+        cache.sw === sw &&
+        cache.sh === sh
+      ) {
+        return cache.canvas;
+      }
+      let canvas = null;
+      try {
+        canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(sw));
+        canvas.height = Math.max(1, Math.round(sh));
+        const tintCtx = canvas.getContext('2d');
+        tintCtx.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        tintCtx.globalCompositeOperation = 'source-in';
+        tintCtx.fillStyle = this.tint;
+        tintCtx.fillRect(0, 0, canvas.width, canvas.height);
+        tintCtx.globalCompositeOperation = 'source-over';
+      } catch (error) {
+        canvas = null;
+      }
+      this._tintCache = { image, color: this.tint, sx, sy, sw, sh, canvas };
+      return canvas;
     }
     setFrame(frame) {
       this.frame = frame;
@@ -416,29 +482,28 @@
     draw(ctx) {
       const loader = this.scene ? this.scene.load : null;
       const frameData = this._resolveFrame();
-      if (frameData && frameData.image) {
-        const sx = frameData.x;
-        const sy = frameData.y;
-        const sw = frameData.width;
-        const sh = frameData.height;
-        ctx.save();
-        ctx.translate(this.flipX ? this.width : 0, this.flipY ? this.height : 0);
-        ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
-        ctx.drawImage(frameData.image, sx, sy, sw, sh, 0, 0, this.width, this.height);
-        ctx.restore();
+      const image =
+        frameData && frameData.image
+          ? frameData.image
+          : loader
+          ? loader.getImage(this.texture)
+          : null;
+      if (!image) {
+        ctx.fillStyle = this.texture || '#ffffff';
+        ctx.fillRect(0, 0, this.width, this.height);
         return;
       }
-      const image = loader ? loader.getImage(this.texture) : null;
-      if (image) {
-        ctx.save();
-        ctx.translate(this.flipX ? this.width : 0, this.flipY ? this.height : 0);
-        ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
-        ctx.drawImage(image, 0, 0, this.width, this.height);
-        ctx.restore();
-        return;
-      }
-      ctx.fillStyle = this.texture || '#ffffff';
-      ctx.fillRect(0, 0, this.width, this.height);
+      const sx = frameData ? frameData.x : 0;
+      const sy = frameData ? frameData.y : 0;
+      const sw = frameData ? frameData.width : image.width;
+      const sh = frameData ? frameData.height : image.height;
+      const tinted = this.tint ? this._tintedSource(image, sx, sy, sw, sh) : null;
+      ctx.save();
+      ctx.translate(this.flipX ? this.width : 0, this.flipY ? this.height : 0);
+      ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
+      if (tinted) ctx.drawImage(tinted, 0, 0, this.width, this.height);
+      else ctx.drawImage(image, sx, sy, sw, sh, 0, 0, this.width, this.height);
+      ctx.restore();
     }
 
     destroy(fromScene) {
@@ -561,6 +626,104 @@
       ctx.strokeStyle = this.color;
       ctx.lineWidth = this.lineWidth;
       ctx.stroke();
+    }
+  }
+
+  /** Local-space points, normalized so the shape starts at (0, 0). */
+  function normalizePolygonPoints(points) {
+    const list = (points || []).map((point) =>
+      Array.isArray(point)
+        ? { x: point[0], y: point[1] }
+        : { x: (point && point.x) || 0, y: (point && point.y) || 0 }
+    );
+    if (list.length === 0) return { points: [], width: 0, height: 0 };
+    let minX = list[0].x;
+    let minY = list[0].y;
+    let maxX = minX;
+    let maxY = minY;
+    list.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+    return {
+      points: list.map((point) => ({ x: point.x - minX, y: point.y - minY })),
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }
+
+  /**
+   * Filled/stroked polygon from local points: `[[0,0],[40,0],[20,30]]`.
+   * Points are normalized so the shape starts at the object's own position.
+   */
+  class Polygon extends GameObject {
+    constructor(scene, x, y, points, options) {
+      const shape = normalizePolygonPoints(points);
+      super(scene, x, y, shape.width, shape.height);
+      const opts = options || {};
+      this.type = 'Polygon';
+      this.points = shape.points;
+      this.color = opts.color || opts.fill || '#ffffff';
+      this.strokeColor = opts.stroke || null;
+      this.strokeWidth = opts.strokeWidth === undefined ? 1 : opts.strokeWidth;
+      this.closed = opts.closed !== false;
+    }
+    setPoints(points) {
+      const shape = normalizePolygonPoints(points);
+      this.points = shape.points;
+      this.width = shape.width;
+      this.height = shape.height;
+      return this;
+    }
+    setColor(color) {
+      this.color = color;
+      return this;
+    }
+    setStroke(color, width) {
+      this.strokeColor = color;
+      this.strokeWidth = width === undefined ? 1 : width;
+      return this;
+    }
+    /** Point-in-polygon test in local coordinates. */
+    containsPoint(x, y) {
+      const points = this.points;
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+        const a = points[i];
+        const b = points[j];
+        if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+    getArea() {
+      const points = this.points;
+      let area = 0;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+        area += (points[j].x + points[i].x) * (points[j].y - points[i].y);
+      }
+      return Math.abs(area / 2);
+    }
+    draw(ctx) {
+      if (this.points.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(this.points[0].x, this.points[0].y);
+      for (let i = 1; i < this.points.length; i += 1) {
+        ctx.lineTo(this.points[i].x, this.points[i].y);
+      }
+      if (this.closed) ctx.closePath();
+      if (this.color) {
+        ctx.fillStyle = this.color;
+        ctx.fill();
+      }
+      if (this.strokeColor) {
+        ctx.strokeStyle = this.strokeColor;
+        ctx.lineWidth = this.strokeWidth;
+        ctx.stroke();
+      }
     }
   }
 
@@ -1181,6 +1344,218 @@
       ctx.beginPath();
       ctx.arc(kx, ky, this.knobRadius, 0, Math.PI * 2);
       ctx.fillStyle = this.knobColor;
+      ctx.fill();
+    }
+  }
+
+  /**
+   * Draggable value slider. Options: min, max, value, step, vertical, height,
+   * trackColor, fillColor, knobColor, knobRadius, disabled, onChange.
+   */
+  class Slider extends GameObject {
+    constructor(scene, x, y, width, options) {
+      const opts = options || {};
+      const height = opts.height || 20;
+      super(scene, x, y, width, height);
+      this.type = 'Slider';
+      this.min = opts.min === undefined ? 0 : opts.min;
+      this.max = opts.max === undefined ? 1 : opts.max;
+      this.step = opts.step || 0;
+      this.vertical = !!opts.vertical;
+      this.value = MathUtils.clamp(opts.value === undefined ? this.min : opts.value, this.min, this.max);
+      this.trackColor = opts.trackColor || 'rgba(255,255,255,0.14)';
+      this.fillColor = opts.fillColor || '#89b4fa';
+      this.knobColor = opts.knobColor || '#cdd6f4';
+      this.knobRadius = opts.knobRadius || height * 0.6;
+      this.disabled = !!opts.disabled;
+      this.dragging = false;
+      this.onChange = opts.onChange || null;
+    }
+    get ratio() {
+      return this.max === this.min ? 0 : (this.value - this.min) / (this.max - this.min);
+    }
+    getValue() {
+      return this.value;
+    }
+    setValue(value, silent) {
+      let next = MathUtils.clamp(value, this.min, this.max);
+      if (this.step > 0) next = Math.round((next - this.min) / this.step) * this.step + this.min;
+      next = MathUtils.clamp(next, this.min, this.max);
+      const changed = next !== this.value;
+      this.value = next;
+      if (changed && !silent && this.onChange) this.onChange(next, this);
+      return this;
+    }
+    setRange(min, max) {
+      this.min = min;
+      this.max = max;
+      this.setValue(this.value, true);
+      return this;
+    }
+    setEnabled(value) {
+      this.disabled = !(value === undefined ? true : !!value);
+      if (this.disabled) this.dragging = false;
+      return this;
+    }
+    _pointerPoint(pointer) {
+      const screen = this.isScreenSpace();
+      return screen
+        ? { x: pointer.x, y: pointer.y }
+        : { x: pointer.worldX, y: pointer.worldY };
+    }
+    _contains(point) {
+      const pad = this.knobRadius;
+      return (
+        point.x >= this.x - (this.vertical ? pad : 0) &&
+        point.x <= this.x + this.width + (this.vertical ? pad : 0) &&
+        point.y >= this.y - (this.vertical ? 0 : pad) &&
+        point.y <= this.y + this.height + (this.vertical ? 0 : pad)
+      );
+    }
+    update(dt) {
+      if (!this.scene || this.disabled) return;
+      const pointer = this.scene.input.pointer;
+      const point = this._pointerPoint(pointer);
+      if (pointer.justDown && this._contains(point)) this.dragging = true;
+      if (!pointer.isDown) this.dragging = false;
+      if (!this.dragging) return;
+      const ratio = this.vertical
+        ? 1 - MathUtils.clamp01((point.y - this.y) / Math.max(1, this.height))
+        : MathUtils.clamp01((point.x - this.x) / Math.max(1, this.width));
+      this.setValue(this.min + ratio * (this.max - this.min));
+    }
+    draw(ctx) {
+      const ratio = MathUtils.clamp01(this.ratio);
+      const thickness = 6;
+      const mid = this.height / 2;
+      if (this.vertical) {
+        const h = this.height;
+        const x = this.width / 2 - thickness / 2;
+        ctx.fillStyle = this.trackColor;
+        roundRectPath(ctx, x, 0, thickness, h, thickness / 2);
+        ctx.fill();
+        ctx.fillStyle = this.disabled ? '#45475a' : this.fillColor;
+        roundRectPath(ctx, x, h - h * ratio, thickness, Math.max(0, h * ratio), thickness / 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(this.width / 2, h - h * ratio, this.knobRadius * 0.8, 0, Math.PI * 2);
+        ctx.fillStyle = this.disabled ? '#6c7086' : this.knobColor;
+        ctx.fill();
+        return;
+      }
+      ctx.fillStyle = this.trackColor;
+      roundRectPath(ctx, 0, mid - thickness / 2, this.width, thickness, thickness / 2);
+      ctx.fill();
+      ctx.fillStyle = this.disabled ? '#45475a' : this.fillColor;
+      roundRectPath(ctx, 0, mid - thickness / 2, Math.max(0, this.width * ratio), thickness, thickness / 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(this.width * ratio, mid, this.knobRadius * 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = this.disabled ? '#6c7086' : this.knobColor;
+      ctx.fill();
+    }
+  }
+
+  /** Read-only 0..1 bar. Options: value, trackColor, fillColor, radius. */
+  class ProgressBar extends GameObject {
+    constructor(scene, x, y, width, height, options) {
+      const opts = options || {};
+      super(scene, x, y, width, height === undefined ? 12 : height);
+      this.type = 'ProgressBar';
+      this.value = MathUtils.clamp01(opts.value === undefined ? 0 : opts.value);
+      this.trackColor = opts.trackColor || 'rgba(255,255,255,0.12)';
+      this.fillColor = opts.fillColor || '#a6e3a1';
+      this.radius = opts.radius === undefined ? this.height / 2 : opts.radius;
+    }
+    setValue(value) {
+      this.value = MathUtils.clamp01(value);
+      return this;
+    }
+    setProgress(value) {
+      return this.setValue(value);
+    }
+    getValue() {
+      return this.value;
+    }
+    setColors(fill, track) {
+      if (fill) this.fillColor = fill;
+      if (track) this.trackColor = track;
+      return this;
+    }
+    draw(ctx) {
+      ctx.fillStyle = this.trackColor;
+      roundRectPath(ctx, 0, 0, this.width, this.height, this.radius);
+      ctx.fill();
+      if (this.value <= 0) return;
+      ctx.fillStyle = this.fillColor;
+      roundRectPath(ctx, 0, 0, Math.max(1, this.width * this.value), this.height, this.radius);
+      ctx.fill();
+    }
+  }
+
+  /** On/off switch. Options: width, height, value, onColor, offColor, disabled, onChange. */
+  class Toggle extends GameObject {
+    constructor(scene, x, y, options) {
+      const opts = options || {};
+      super(scene, x, y, opts.width || 54, opts.height || 28);
+      this.type = 'Toggle';
+      this.value = !!opts.value;
+      this.disabled = !!opts.disabled;
+      this.onColor = opts.onColor || '#a6e3a1';
+      this.offColor = opts.offColor || 'rgba(255,255,255,0.16)';
+      this.knobColor = opts.knobColor || '#ffffff';
+      this.onChange = opts.onChange || null;
+      this._knob = this.value ? 1 : 0;
+    }
+    setValue(value, silent) {
+      const next = !!value;
+      const changed = next !== this.value;
+      this.value = next;
+      if (changed && !silent && this.onChange) this.onChange(next, this);
+      return this;
+    }
+    getValue() {
+      return this.value;
+    }
+    toggle() {
+      return this.setValue(!this.value);
+    }
+    setEnabled(value) {
+      this.disabled = !(value === undefined ? true : !!value);
+      return this;
+    }
+    _contains(pointer) {
+      const screen = this.isScreenSpace();
+      const px = screen ? pointer.x : pointer.worldX;
+      const py = screen ? pointer.y : pointer.worldY;
+      return (
+        px >= this.x &&
+        px <= this.x + this.displayWidth &&
+        py >= this.y &&
+        py <= this.y + this.displayHeight
+      );
+    }
+    update(dt) {
+      if (this.scene && !this.disabled) {
+        const pointer = this.scene.input.pointer;
+        if (pointer.justDown && this._contains(pointer)) this.toggle();
+      }
+      const target = this.value ? 1 : 0;
+      this._knob += (target - this._knob) * Math.min(1, (dt || 0) * 12);
+      if (Math.abs(target - this._knob) < 0.01) this._knob = target;
+    }
+    draw(ctx) {
+      const h = this.height;
+      const w = this.width;
+      roundRectPath(ctx, 0, 0, w, h, Math.min(h, w) / 2);
+      ctx.fillStyle = this.disabled ? '#45475a' : this.value ? this.onColor : this.offColor;
+      ctx.fill();
+      const knobRadius = Math.max(2, h / 2 - 4);
+      const inset = knobRadius + 4;
+      const cx = inset + (w - inset * 2) * MathUtils.clamp01(this._knob);
+      ctx.beginPath();
+      ctx.arc(cx, h / 2, knobRadius, 0, Math.PI * 2);
+      ctx.fillStyle = this.disabled ? '#6c7086' : this.knobColor;
       ctx.fill();
     }
   }

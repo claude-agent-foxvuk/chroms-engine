@@ -1,4 +1,4 @@
-# Chroms Engine v1.1.3 — documentation
+# Chroms Engine v1.2.0 — documentation
 
 Chroms is a dependency-free 2D engine for the browser. It draws with Canvas 2D, ships as a single `chroms.js`, and keeps gameplay code in `Scene` subclasses.
 
@@ -121,6 +121,8 @@ Russian translation: [`../ru/index.md`](../ru/index.md).
 
 **Tooling** — `Chroms.describe()`, `docs/llms.txt`, `docs/api.json`, a headless smoke test, a browser showcase.
 
+**1.2.0 additions** — multiple active scenes (`scene.launch`, `bringToTop`, `isActive`, `game.getActiveScenes`), collision groups/masks (`setCollisionGroup`, `setCollidesWith`, `setCollisionMatrix`), UI widgets (`add.slider`, `add.progressBar`, `add.toggle`), `add.polygon`, `sprite.setTint`, `object.setInteractive` with pointer events, key chords, `repeatDelay` and color tweens, `storage.export/import`, `musicPause/musicResume`, tilemap object layers, `physics.moveTo`.
+
 **1.1.3 additions** — `game.step(dt?)` for manual frames, a runtime error overlay (`game.lastError`, `game.clearError()`, `game.events.on('error')`, `catchErrors: false`), plus zoom clamping in `camera.zoomTo()` and `pointercancel` handling.
 
 **1.1.2 additions** — `camera.panTo(x, y, ms, ease?)`, `game.setPixelArt(bool)`, `game.toggleFullscreen()`, `group.getByName(name)`, `group.getClosest(x, y, aliveOnly?)`, `anims.pauseAll/resumeAll/stopAll`, ranged particle `size`.
@@ -139,4 +141,4 @@ Chroms targets current evergreen browsers. It deliberately stays small:
 
 ## Version
 
-Current version: **1.1.3**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.
+Current version: **1.2.0**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.

@@ -353,6 +353,7 @@
             opacity: layer.opacity === undefined ? 1 : layer.opacity,
             solid: !!layer.solid,
             collides: layer.collides || null,
+            objects: layer.objects || [],
             offsetX: layer.offsetX || 0,
             offsetY: layer.offsetY || 0
           },
@@ -365,6 +366,20 @@
     getLayer(name) {
       if (!name) return this.layers[0] || null;
       return this.layers.find((layer) => layer.name === name) || null;
+    }
+    /** Object entries of a layer taken from the map JSON, or []. */
+    getObjects(name) {
+      const layer = this.getLayer(name);
+      if (!layer || !Array.isArray(layer.objects)) return [];
+      return layer.objects;
+    }
+    getObjectByName(name) {
+      let found = null;
+      this.layers.forEach((layer) => {
+        if (found || !Array.isArray(layer.objects)) return;
+        found = layer.objects.find((entry) => entry && entry.name === name) || null;
+      });
+      return found;
     }
     getTileAt(layerName, tileX, tileY) {
       const layer = this.getLayer(layerName);
@@ -646,6 +661,26 @@
           scene.children.push(object);
           return object;
         },
+        polygon(x, y, points, options) {
+          const object = new Polygon(scene, x, y, points, options);
+          scene.children.push(object);
+          return object;
+        },
+        slider(x, y, width, options) {
+          const object = new Slider(scene, x, y, width, options);
+          scene.children.push(object);
+          return object;
+        },
+        progressBar(x, y, width, height, options) {
+          const object = new ProgressBar(scene, x, y, width, height, options);
+          scene.children.push(object);
+          return object;
+        },
+        toggle(x, y, options) {
+          const object = new Toggle(scene, x, y, options);
+          scene.children.push(object);
+          return object;
+        },
         animatedSprite(x, y, width, height, texture) {
           const object = new Sprite(scene, x, y, width, height, texture);
           scene.children.push(object);
@@ -678,6 +713,20 @@
     restart(data, options) {
       if (this.game) this.game.startScene(this.key, data, options);
       return this;
+    }
+    /** Start another scene on top of this one; both keep updating. */
+    launch(key, data) {
+      if (this.game) this.game.launchScene(key, data);
+      return this;
+    }
+    /** Move this active scene above the others. */
+    bringToTop() {
+      if (this.game) this.game.bringToTop(this.key);
+      return this;
+    }
+    /** True while this scene is in the active stack. */
+    isActive() {
+      return !!(this.game && this.game.isActive(this.key));
     }
     stop() {
       if (this.game) this.game.stopScene(this.key);

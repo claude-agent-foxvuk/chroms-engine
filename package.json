@@ -1,6 +1,6 @@
 {
   "name": "chroms",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "description": "Chroms 2D browser game engine for humans and AI agents, API inspired by Phaser 3",
   "main": "chroms.js",
   "scripts": {

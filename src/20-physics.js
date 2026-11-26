@@ -28,6 +28,8 @@
       this.collideWorldBounds = !!opts.collideWorldBounds;
       this.isSensor = !!opts.isSensor;
       this.isCircle = !!opts.isCircle;
+      this.collisionGroup = opts.collisionGroup || null;
+      this.collidesWith = opts.collidesWith || null;
       this.enabled = opts.enabled !== false;
       this.active = true;
       this.collisionCount = 0;
@@ -131,6 +133,23 @@
       this.isCircle = value === undefined ? true : !!value;
       return this;
     }
+    /** Name this body's collision layer, e.g. 'player'. */
+    setCollisionGroup(group) {
+      this.collisionGroup = group || null;
+      return this;
+    }
+    /** Layer names this body may collide with: array, Set or '*'. */
+    setCollidesWith(groups) {
+      this.collidesWith = groups || null;
+      return this;
+    }
+    /** Point the velocity at an angle in degrees. */
+    setVelocityFromAngle(degrees, speed) {
+      const radians = MathUtils.degToRad(degrees);
+      const value = speed === undefined ? 100 : speed;
+      this.velocity.set(Math.cos(radians) * value, Math.sin(radians) * value);
+      return this;
+    }
     setEnabled(value) {
       this.enabled = !!value;
       return this;
@@ -155,6 +174,25 @@
     }
   }
 
+  /** True when `list` (array, Set, string or '*') allows a collision with `group`. */
+  function groupListAllows(list, group) {
+    if (!list) return true;
+    const name = group || 'default';
+    if (list === '*' || list === true) return true;
+    if (Array.isArray(list)) return list.indexOf('*') !== -1 || list.indexOf(name) !== -1;
+    if (list instanceof Set) return list.has('*') || list.has(name);
+    if (typeof list === 'string') return list === '*' || list === name;
+    return true;
+  }
+
+  /** Per-body layer/mask check, independent of the world matrix. */
+  function bodiesAllowCollision(a, b) {
+    if (!a.collidesWith && !b.collidesWith) return true;
+    if (a.collidesWith && !groupListAllows(a.collidesWith, b.collisionGroup)) return false;
+    if (b.collidesWith && !groupListAllows(b.collidesWith, a.collisionGroup)) return false;
+    return true;
+  }
+
   /**
    * Physics world shared by all scenes of a game. Register colliders with
    * `addCollider(a, b)`; a and b may be game objects, bodies, groups or arrays.
@@ -170,6 +208,9 @@
       this.bodies = [];
       this.colliders = [];
       this.bounds = null;
+      this.collisionMatrix = null;
+      this._cache = null;
+      this._sceneFilter = null;
       this.enabled = opts.enabled !== false;
       this.fixedStep = opts.fixedStep || 1 / 120;
       this.maxSubSteps = opts.maxSubSteps || 6;
@@ -285,7 +326,45 @@
       return this.addCollider(a, b, callback, { overlapOnly: true });
     }
 
+    /**
+     * Collision layers as a matrix, e.g.
+     * `world.setCollisionMatrix({ player: ['enemy'], enemy: ['player'] })`.
+     * Pass null to remove the matrix.
+     */
+    setCollisionMatrix(matrix) {
+      this.collisionMatrix = matrix || null;
+      return this;
+    }
+    _allowsPair(a, b) {
+      if (!bodiesAllowCollision(a, b)) return false;
+      const matrix = this.collisionMatrix;
+      if (!matrix) return true;
+      const groupA = a.collisionGroup || 'default';
+      const groupB = b.collisionGroup || 'default';
+      const listA = matrix[groupA];
+      const listB = matrix[groupB];
+      if (!listA && !listB) return true;
+      if (listA && groupListAllows(listA, b.collisionGroup)) return true;
+      if (listB && groupListAllows(listB, a.collisionGroup)) return true;
+      return false;
+    }
+    _bodyActive(body) {
+      if (!this._sceneFilter) return true;
+      if (!body.scene) return true;
+      return this._sceneFilter.has(body.scene);
+    }
+
     _bodiesOf(target, out) {
+      if (!out && this._cache) {
+        const cached = this._cache.get(target);
+        if (cached) return cached;
+      }
+      const result = this._collectBodies(target, out);
+      if (!out && this._cache) this._cache.set(target, result);
+      return result;
+    }
+
+    _collectBodies(target, out) {
       const result = out || [];
       if (!target) return result;
       if (target instanceof Body) {
@@ -361,6 +440,7 @@
         for (const bodyB of listB) {
           if (!bodyB.enabled || !bodyB.active || bodyB.object.active === false) continue;
           if (bodyA === bodyB) continue;
+          if (!this._allowsPair(bodyA, bodyB)) continue;
           if (this._intersects(bodyA, bodyB)) return true;
         }
       }
@@ -376,6 +456,7 @@
         listB.forEach((bodyB) => {
           if (bodyA === bodyB) return;
           if (!bodyA.enabled || !bodyB.enabled) return;
+          if (!this._allowsPair(bodyA, bodyB)) return;
           if (!this._intersects(bodyA, bodyB)) return;
           hit = true;
           if (!bodyA.isSensor && !bodyB.isSensor) this._separate(bodyA, bodyB);
@@ -573,25 +654,48 @@
     }
 
     /** Advance the world using a fixed timestep accumulator. */
-    step(delta) {
+    step(delta, scenes) {
       this.stats.pairs = 0;
-      if (!this.enabled || this.bodies.length === 0) {
+      this._sceneFilter = scenes && scenes.length ? new Set(scenes) : null;
+      this._cache = new Map();
+      try {
+        if (!this.enabled || this.bodies.length === 0) {
+          this._processColliders();
+          return;
+        }
+        const dt = (delta || 0) * this.timeScale;
+        this.accumulator += dt;
+        let steps = 0;
+        const start = performance.now();
+        while (this.accumulator >= this.fixedStep && steps < this.maxSubSteps) {
+          this._integrate(this.fixedStep);
+          this.accumulator -= this.fixedStep;
+          steps += 1;
+        }
+        if (this.accumulator > this.fixedStep * this.maxSubSteps) this.accumulator = 0;
         this._processColliders();
-        return;
+        this.stats.steps = steps;
+        this.stats.time = performance.now() - start;
+      } finally {
+        this._cache = null;
+        this._sceneFilter = null;
       }
-      const dt = (delta || 0) * this.timeScale;
-      this.accumulator += dt;
-      let steps = 0;
-      const start = performance.now();
-      while (this.accumulator >= this.fixedStep && steps < this.maxSubSteps) {
-        this._integrate(this.fixedStep);
-        this.accumulator -= this.fixedStep;
-        steps += 1;
+    }
+
+    /** Steer a body toward a point; returns true once it is close enough. */
+    moveTo(object, x, y, speed) {
+      const body = object && object.body ? object.body : object;
+      if (!body || !body.velocity) return true;
+      const dx = x - body.centerX;
+      const dy = y - body.centerY;
+      const distance = Math.hypot(dx, dy);
+      const velocity = Math.max(1, speed === undefined ? 100 : speed);
+      if (distance <= Math.max(1, velocity / 60)) {
+        body.velocity.set(0, 0);
+        return true;
       }
-      if (this.accumulator > this.fixedStep * this.maxSubSteps) this.accumulator = 0;
-      this._processColliders();
-      this.stats.steps = steps;
-      this.stats.time = performance.now() - start;
+      body.velocity.set((dx / distance) * velocity, (dy / distance) * velocity);
+      return false;
     }
 
     _integrate(dt) {
@@ -602,6 +706,7 @@
         body.blocked.right = false;
         body.touching.none = true;
         if (!body.enabled || !body.active || body.object.active === false) return;
+        if (!this._bodyActive(body)) return;
         if (body.immovable) return;
 
         if (body.allowGravity) {
@@ -674,9 +779,12 @@
         const listB = this._bodiesOf(collider.b);
         listA.forEach((bodyA) => {
           if (!bodyA.enabled || !bodyA.active || bodyA.object.active === false) return;
+          if (!this._bodyActive(bodyA)) return;
           listB.forEach((bodyB) => {
             if (bodyA === bodyB) return;
             if (!bodyB.enabled || !bodyB.active || bodyB.object.active === false) return;
+            if (!this._bodyActive(bodyB)) return;
+            if (!this._allowsPair(bodyA, bodyB)) return;
             if (!this._intersects(bodyA, bodyB)) return;
             this.stats.pairs += 1;
             if (!collider.overlapOnly && !bodyA.isSensor && !bodyB.isSensor) {

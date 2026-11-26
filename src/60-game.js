@@ -73,6 +73,7 @@
 
       this.scenes = {};
       this.sceneOrder = [];
+      this.sceneStack = [];
       this.currentScene = null;
       this.running = false;
       this.paused = false;
@@ -177,13 +178,53 @@
       return this.scenes[key] || null;
     }
     removeScene(key) {
-      if (this.currentScene && this.currentScene.key === key) {
-        this._cleanupScene(this.currentScene);
-        this.currentScene = null;
-      }
+      const scene = this.scenes[key];
+      if (scene) this._stopSceneInternal(scene);
       delete this.scenes[key];
       this.sceneOrder = this.sceneOrder.filter((item) => item !== key);
       return this;
+    }
+
+    /** True while the scene (or the current one) is in the active stack. */
+    isActive(key) {
+      const target = key || (this.currentScene ? this.currentScene.key : null);
+      return !!target && this.sceneStack.indexOf(target) !== -1;
+    }
+    /** Active scenes from bottom to top. */
+    getActiveScenes() {
+      return this.sceneStack.map((key) => this.scenes[key]).filter(Boolean);
+    }
+    _topScene() {
+      const key = this.sceneStack[this.sceneStack.length - 1];
+      return key ? this.scenes[key] || null : null;
+    }
+    /** Raise an active scene above the others (topmost renders last). */
+    bringToTop(key) {
+      const target = key || (this.currentScene ? this.currentScene.key : null);
+      if (!target || this.sceneStack.indexOf(target) === -1) return this;
+      this.sceneStack = this.sceneStack.filter((item) => item !== target);
+      this.sceneStack.push(target);
+      const scene = this.scenes[target] || null;
+      if (scene) this.currentScene = scene;
+      this.events.emit('scene-bring-to-top', scene);
+      return this;
+    }
+    /** Lower an active scene below the others. */
+    sendToBack(key) {
+      const target = key || (this.currentScene ? this.currentScene.key : null);
+      if (!target || this.sceneStack.indexOf(target) === -1) return this;
+      this.sceneStack = this.sceneStack.filter((item) => item !== target);
+      this.sceneStack.unshift(target);
+      this.events.emit('scene-sent-to-back', this.scenes[target] || null);
+      return this;
+    }
+    /** Start a scene on top of the active ones without stopping them. */
+    launchScene(key, data) {
+      if (!this.scenes[key]) {
+        console.error('[Chroms] Scene not found: ' + key);
+        return null;
+      }
+      return this._activateScene(key, data, { keepOthers: true });
     }
 
     /** Switch to a scene. Options: fade (ms), fadeColor. */
@@ -215,34 +256,41 @@
       }
       return this._activateScene(key, data);
     }
-    _activateScene(key, data) {
+    _activateScene(key, data, options) {
       const scene = this.scenes[key];
       if (!scene) return null;
-      if (this.currentScene && this.currentScene !== scene) {
-        const previous = this.currentScene;
-        previous.status = 'stopped';
-        if (typeof previous.shutdown === 'function') previous.shutdown();
-        this.events.emit('scene-stop', previous);
-        this._cleanupScene(previous);
-      } else if (this.currentScene === scene) {
-        const previous = this.currentScene;
-        if (typeof previous.shutdown === 'function') previous.shutdown();
-        this._cleanupScene(previous);
+      const opts = options || {};
+      if (opts.keepOthers) {
+        if (this.sceneStack.indexOf(key) !== -1) {
+          this.bringToTop(key);
+          return scene;
+        }
+      } else {
+        this.getActiveScenes().forEach((active) => {
+          if (active !== scene) this._stopSceneInternal(active);
+        });
       }
+      return this._startSceneInternal(scene, data);
+    }
+
+    _startSceneInternal(scene, data) {
+      if (typeof scene.shutdown === 'function') scene.shutdown();
+      this._cleanupScene(scene);
+      if (this.sceneStack.indexOf(scene.key) === -1) this.sceneStack.push(scene.key);
       this.currentScene = scene;
       scene.data = data || {};
       scene.status = 'loading';
       scene.init(data || {});
       this.events.emit('scene-start', scene);
+      if (this.sceneStack.length > 1) this.events.emit('scene-launch', scene);
       scene.preload();
-      const loadingKey = scene.key;
       this.load.start(
         (progress) => {
           scene.loadProgress = progress;
           this.events.emit('scene-load-progress', scene, progress);
         },
         () => {
-          if (this.currentScene !== scene) return;
+          if (this.sceneStack.indexOf(scene.key) === -1) return;
           scene.status = 'running';
           scene.create();
           this.events.emit('scene-create', scene);
@@ -250,15 +298,21 @@
       );
       return scene;
     }
+
+    _stopSceneInternal(scene) {
+      if (!scene) return this;
+      scene.status = 'stopped';
+      if (typeof scene.shutdown === 'function') scene.shutdown();
+      this._cleanupScene(scene);
+      this.sceneStack = this.sceneStack.filter((key) => key !== scene.key);
+      this.events.emit('scene-stop', scene);
+      if (this.currentScene === scene) this.currentScene = this._topScene();
+      return this;
+    }
     stopScene(key) {
       const scene = key ? this.scenes[key] : this.currentScene;
       if (!scene) return this;
-      if (typeof scene.shutdown === 'function') scene.shutdown();
-      this._cleanupScene(scene);
-      scene.status = 'stopped';
-      if (this.currentScene === scene) this.currentScene = null;
-      this.events.emit('scene-stop', scene);
-      return this;
+      return this._stopSceneInternal(scene);
     }
     _cleanupScene(scene) {
       if (!scene) return;
@@ -420,11 +474,13 @@
 
     _simulate(delta) {
       if (!(document.hidden && this.pauseOnHidden)) {
-        const scene = this.currentScene;
-        if (scene && scene.status === 'running') {
+        const running = [];
+        this.getActiveScenes().forEach((scene) => {
+          if (scene.status !== 'running') return;
           scene._update(delta);
-          this.physics.step(delta);
-        }
+          running.push(scene);
+        });
+        if (running.length) this.physics.step(delta, running);
       }
       this.tweens.update(delta);
       this.time.update(delta);
@@ -468,9 +524,9 @@
       ctx.imageSmoothingEnabled = this.antialias;
       ctx.fillStyle = this.backgroundColor;
       ctx.fillRect(0, 0, this.width, this.height);
-      if (this.currentScene) {
-        this.currentScene._render(ctx);
-      }
+      this.getActiveScenes().forEach((scene) => {
+        scene._render(ctx);
+      });
       if (this.load.isLoading && this.loadingStyle.show) {
         this._drawLoading(ctx);
       }
@@ -519,7 +575,8 @@
           'FPS ' + this.fps,
           'objects ' + objects,
           'bodies ' + this.physics.bodies.length,
-          'scene ' + (this.currentScene ? this.currentScene.key : '-')
+          'scene ' + (this.currentScene ? this.currentScene.key : '-'),
+          'scenes ' + this.sceneStack.length
         ];
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
         ctx.fillRect(8, 8, 150, 16 * lines.length + 8);
@@ -708,10 +765,9 @@
     destroy() {
       this.stop();
       this.events.emit('destroy', this);
-      if (this.currentScene) {
-        this._cleanupScene(this.currentScene);
-        this.currentScene = null;
-      }
+      this.getActiveScenes().forEach((scene) => this._stopSceneInternal(scene));
+      this.sceneStack = [];
+      this.currentScene = null;
       this.sound.stopAll();
       this.input.destroy();
       this._cleanupFns.forEach((fn) => fn());
@@ -762,13 +818,17 @@
           'tilemap',
           'button',
           'joystick',
+          'slider',
+          'progressBar',
+          'toggle',
+          'polygon',
           'animatedSprite',
           'existing'
         ],
         physics:
-          'AABB world: body enablePhysics({...}), setVelocity, setGravityY, setBounce, setImmovable, collideWorldBounds; world.collide/overlap/addCollider/raycast/collideTilemap',
+          'AABB world: body enablePhysics({...}), setVelocity, setGravityY, setBounce, setImmovable, collideWorldBounds; collisionGroup/collidesWith and world.setCollisionMatrix for layers; world.collide/overlap/addCollider/raycast/collideTilemap/moveTo',
         input:
-          'input.isDown(code), isJustDown, addAction(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown}, enableDrag(object), gamepad helpers',
+          'input.isDown(code), isJustDown, addAction(name, codes), addKeyCombo(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown,button}, object.setInteractive({ onClick, onHover, onOut }), enableDrag(object), gamepad helpers',
         tweens: 'scene.tweens.add({ targets, x, y, alpha, duration, ease, yoyo, repeat, delay, onComplete })',
         timers: 'scene.time.delayedCall(ms, fn), scene.time.addEvent({ delay, loop, callback })',
         animation:
@@ -777,9 +837,9 @@
           'scene.add.particles(x, y, { speed, lifespan, quantity, frequency, colors, gravityY, emitZone })',
         camera:
           'scene.camera.follow(target, { lerpX, lerpY, offsetX, offsetY }); setBounds, setZoom, shake, fadeOut',
-        storage: 'game.storage.save(key, value), load(key, fallback)',
+        storage: 'game.storage.save(key, value), load(key, fallback), export(), import(snapshot)',
         audio:
-          'scene.sound.play(key), musicPlay(key, { fade }), beep({ frequency }), mute/toggleMute',
+          'scene.sound.play(key), musicPlay(key, { fade }), musicPause(), musicResume(), beep({ frequency }), mute/toggleMute',
         tilemap:
           'scene.add.tilemap(jsonOrKey) with layers, tileset, solid; physics.collideTilemap(object, map)'
       },
@@ -789,7 +849,10 @@
           'an exception from update() or render() is logged once, emitted as game.events "error", drawn over the canvas and pauses the game; game.clearError() dismisses it, catchErrors: false rethrows',
         overlay: 'Backquote toggles the FPS/body debug overlay'
       },
+      scenesMulti:
+        'scene.launch(key) starts a scene on top of the running ones; game.getActiveScenes() returns the stack, scene.bringToTop() reorders it, scene.isActive() checks membership',
       gotchas: [
+        'All active scenes share one physics world and one input pointer; a paused or sleeping scene has its bodies frozen automatically.',
         'Physics is AABB only; rotated sprites use their unrotated box.',
         'Call scene.physics.collide/addCollider once; the world checks the pair every fixed step.',
         'Set velocities in update(); the physics step runs after scene.update.',
@@ -833,6 +896,10 @@
     Group,
     Button,
     Joystick,
+    Polygon,
+    Slider,
+    ProgressBar,
+    Toggle,
     ParticleEmitter,
     Body,
     PhysicsWorld,

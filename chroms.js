@@ -1,7 +1,7 @@
-/*! Chroms Engine v1.1.3 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
+/*! Chroms Engine v1.2.0 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
 /* ---- 00-core.js ---- */
 /**
- * Chroms Engine v1.1.3
+ * Chroms Engine v1.2.0
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
  * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
@@ -12,7 +12,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.1.3';
+  const VERSION = '1.2.0';
   let _uid = 0;
 
   function uid(prefix) {
@@ -401,6 +401,22 @@
         }
       }
       return Array.from(out);
+    }
+    /** Plain object with every stored key and value (JSON-safe). */
+    export() {
+      const out = {};
+      this.keys().forEach((key) => {
+        const value = this.load(key, undefined);
+        if (value !== undefined) out[key] = value;
+      });
+      return out;
+    }
+    /** Write a previously exported snapshot. `replace` clears first. */
+    import(data, replace) {
+      if (!data || typeof data !== 'object') return this;
+      if (replace) this.clear();
+      Object.keys(data).forEach((key) => this.save(key, data[key]));
+      return this;
     }
   }
 
@@ -937,14 +953,19 @@
         isDown: false,
         justDown: false,
         justUp: false,
-        downTime: 0
+        downTime: 0,
+        button: 0
       };
       this.pointers = new Map();
+      this.combos = {};
       this.wheelDelta = 0;
       this.enabled = true;
       this.gamepads = [];
       this._dragTargets = [];
       this._dragging = null;
+      this._interactive = [];
+      this._hovered = [];
+      this._pressure = 0;
       this._listeners = [];
       this.events = new EventEmitter();
 
@@ -985,6 +1006,8 @@
         this.pointer.isDown = true;
         this.pointer.justDown = true;
         this.pointer.downTime = performance.now();
+        this.pointer.button = e.button || 0;
+        this._pressure = e.pressure === undefined ? 1 : e.pressure;
         this.pointers.set(e.pointerId, { x: point.x, y: point.y, isDown: true });
         if (this._dragTargets.length) this._beginDrag();
       });
@@ -1090,8 +1113,105 @@
       return codes.every((code) => this.isDown(code));
     }
 
-    /** Poll gamepads; called every frame by the game. */
+    /**
+     * Bind a chord, e.g. `input.addKeyCombo('dash', ['ShiftLeft', 'KeyD'])`.
+     * `keyComboJustDown` is true on the frame the last key completes the chord.
+     */
+    addKeyCombo(name, codes) {
+      this.combos[name] = Array.isArray(codes) ? codes.slice() : [codes];
+      return this;
+    }
+    keyComboDown(name) {
+      const codes = this.combos[name];
+      return codes ? codes.every((code) => !!this.keys[code]) : false;
+    }
+    keyComboJustDown(name) {
+      const codes = this.combos[name];
+      if (!codes || !codes.every((code) => !!this.keys[code])) return false;
+      return codes.some((code) => !!this.justPressed[code]);
+    }
+
+    /** Make a game object emit pointerover/out/down/up/click. */
+    addInteractive(object) {
+      if (object && this._interactive.indexOf(object) === -1) this._interactive.push(object);
+      return object;
+    }
+    removeInteractive(object) {
+      this._interactive = this._interactive.filter((item) => item !== object);
+      this._hovered = this._hovered.filter((item) => item !== object);
+      return object;
+    }
+    _interactivePoint(object) {
+      const screen = typeof object.isScreenSpace === 'function' && object.isScreenSpace();
+      return screen
+        ? { x: this.pointer.x, y: this.pointer.y }
+        : { x: this.pointer.worldX, y: this.pointer.worldY };
+    }
+    _interactiveContains(object, x, y) {
+      if (object.active === false || object.visible === false || object.destroyed) return false;
+      const opts = object._interactive || {};
+      if (typeof opts.hitArea === 'function') return !!opts.hitArea(x - object.x, y - object.y, object);
+      const left = object.x + (opts.offsetX || 0);
+      const top = object.y + (opts.offsetY || 0);
+      return (
+        x >= left &&
+        x <= left + object.displayWidth &&
+        y >= top &&
+        y <= top + object.displayHeight
+      );
+    }
+    _emitInteractive(object, type) {
+      const opts = object._interactive || {};
+      const handlers = {
+        pointerover: 'onHover',
+        pointerout: 'onOut',
+        pointerdown: 'onDown',
+        pointerup: 'onUp',
+        click: 'onClick'
+      };
+      if (object.events) object.events.emit(type, object, this.pointer);
+      const handler = opts[handlers[type]];
+      if (handler) handler(object, this.pointer);
+      if (this.events) this.events.emit('object-' + type, object, this.pointer);
+    }
+    _processInteractive() {
+      this._interactive = this._interactive.filter(
+        (object) => object && !object.destroyed && object._interactive && object._interactive.enabled !== false
+      );
+      if (!this.enabled || this._interactive.length === 0) {
+        this._hovered = [];
+        return;
+      }
+      const pointer = this.pointer;
+      const hovered = [];
+      this._interactive.forEach((object) => {
+        const point = this._interactivePoint(object);
+        const inside = this._interactiveContains(object, point.x, point.y);
+        const wasInside = this._hovered.indexOf(object) !== -1;
+        if (inside) hovered.push(object);
+        if (inside && !wasInside) {
+          object.isHovered = true;
+          this._emitInteractive(object, 'pointerover');
+        } else if (!inside && wasInside) {
+          object.isHovered = false;
+          this._emitInteractive(object, 'pointerout');
+        }
+        if (inside && pointer.justDown) {
+          object._interactivePressed = true;
+          this._emitInteractive(object, 'pointerdown');
+        }
+        if (pointer.justUp && object._interactivePressed) {
+          object._interactivePressed = false;
+          if (inside) this._emitInteractive(object, 'click');
+          this._emitInteractive(object, 'pointerup');
+        }
+      });
+      this._hovered = hovered;
+    }
+
+    /** Poll gamepads and interactive objects; called every frame by the game. */
     update() {
+      this._processInteractive();
       if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
       const pads = navigator.getGamepads();
       this.gamepads = [];
@@ -1207,6 +1327,8 @@
       this._listeners = [];
       this._dragTargets = [];
       this._dragging = null;
+      this._interactive = [];
+      this._hovered = [];
       this.enabled = false;
     }
   }
@@ -1229,6 +1351,7 @@
       this._context = null;
       this._unlocked = false;
       this._lastBeepAt = 0;
+      this._musicPaused = false;
       this.events = new EventEmitter();
     }
 
@@ -1351,6 +1474,33 @@
       }
       return handle;
     }
+    /** Pause the current music track, keeping its position. */
+    musicPause() {
+      if (!this.music || !this.music.audio) return this;
+      try {
+        this.music.audio.pause();
+        this._musicPaused = true;
+      } catch (error) {
+        /* ignore */
+      }
+      return this;
+    }
+    /** Resume a track paused with musicPause(). */
+    musicResume() {
+      if (!this.music || !this.music.audio || !this._musicPaused) return this;
+      try {
+        const promise = this.music.audio.play();
+        if (promise && promise.catch) promise.catch(() => {});
+        this._musicPaused = false;
+      } catch (error) {
+        /* ignore */
+      }
+      return this;
+    }
+    /** True while music is playing and not paused. */
+    isMusicPlaying() {
+      return !!(this.music && !this._musicPaused);
+    }
     stopMusic(fade) {
       if (!this.music) return this;
       const handle = this.music;
@@ -1466,6 +1616,8 @@
       this.collideWorldBounds = !!opts.collideWorldBounds;
       this.isSensor = !!opts.isSensor;
       this.isCircle = !!opts.isCircle;
+      this.collisionGroup = opts.collisionGroup || null;
+      this.collidesWith = opts.collidesWith || null;
       this.enabled = opts.enabled !== false;
       this.active = true;
       this.collisionCount = 0;
@@ -1569,6 +1721,23 @@
       this.isCircle = value === undefined ? true : !!value;
       return this;
     }
+    /** Name this body's collision layer, e.g. 'player'. */
+    setCollisionGroup(group) {
+      this.collisionGroup = group || null;
+      return this;
+    }
+    /** Layer names this body may collide with: array, Set or '*'. */
+    setCollidesWith(groups) {
+      this.collidesWith = groups || null;
+      return this;
+    }
+    /** Point the velocity at an angle in degrees. */
+    setVelocityFromAngle(degrees, speed) {
+      const radians = MathUtils.degToRad(degrees);
+      const value = speed === undefined ? 100 : speed;
+      this.velocity.set(Math.cos(radians) * value, Math.sin(radians) * value);
+      return this;
+    }
     setEnabled(value) {
       this.enabled = !!value;
       return this;
@@ -1593,6 +1762,25 @@
     }
   }
 
+  /** True when `list` (array, Set, string or '*') allows a collision with `group`. */
+  function groupListAllows(list, group) {
+    if (!list) return true;
+    const name = group || 'default';
+    if (list === '*' || list === true) return true;
+    if (Array.isArray(list)) return list.indexOf('*') !== -1 || list.indexOf(name) !== -1;
+    if (list instanceof Set) return list.has('*') || list.has(name);
+    if (typeof list === 'string') return list === '*' || list === name;
+    return true;
+  }
+
+  /** Per-body layer/mask check, independent of the world matrix. */
+  function bodiesAllowCollision(a, b) {
+    if (!a.collidesWith && !b.collidesWith) return true;
+    if (a.collidesWith && !groupListAllows(a.collidesWith, b.collisionGroup)) return false;
+    if (b.collidesWith && !groupListAllows(b.collidesWith, a.collisionGroup)) return false;
+    return true;
+  }
+
   /**
    * Physics world shared by all scenes of a game. Register colliders with
    * `addCollider(a, b)`; a and b may be game objects, bodies, groups or arrays.
@@ -1608,6 +1796,9 @@
       this.bodies = [];
       this.colliders = [];
       this.bounds = null;
+      this.collisionMatrix = null;
+      this._cache = null;
+      this._sceneFilter = null;
       this.enabled = opts.enabled !== false;
       this.fixedStep = opts.fixedStep || 1 / 120;
       this.maxSubSteps = opts.maxSubSteps || 6;
@@ -1723,7 +1914,45 @@
       return this.addCollider(a, b, callback, { overlapOnly: true });
     }
 
+    /**
+     * Collision layers as a matrix, e.g.
+     * `world.setCollisionMatrix({ player: ['enemy'], enemy: ['player'] })`.
+     * Pass null to remove the matrix.
+     */
+    setCollisionMatrix(matrix) {
+      this.collisionMatrix = matrix || null;
+      return this;
+    }
+    _allowsPair(a, b) {
+      if (!bodiesAllowCollision(a, b)) return false;
+      const matrix = this.collisionMatrix;
+      if (!matrix) return true;
+      const groupA = a.collisionGroup || 'default';
+      const groupB = b.collisionGroup || 'default';
+      const listA = matrix[groupA];
+      const listB = matrix[groupB];
+      if (!listA && !listB) return true;
+      if (listA && groupListAllows(listA, b.collisionGroup)) return true;
+      if (listB && groupListAllows(listB, a.collisionGroup)) return true;
+      return false;
+    }
+    _bodyActive(body) {
+      if (!this._sceneFilter) return true;
+      if (!body.scene) return true;
+      return this._sceneFilter.has(body.scene);
+    }
+
     _bodiesOf(target, out) {
+      if (!out && this._cache) {
+        const cached = this._cache.get(target);
+        if (cached) return cached;
+      }
+      const result = this._collectBodies(target, out);
+      if (!out && this._cache) this._cache.set(target, result);
+      return result;
+    }
+
+    _collectBodies(target, out) {
       const result = out || [];
       if (!target) return result;
       if (target instanceof Body) {
@@ -1799,6 +2028,7 @@
         for (const bodyB of listB) {
           if (!bodyB.enabled || !bodyB.active || bodyB.object.active === false) continue;
           if (bodyA === bodyB) continue;
+          if (!this._allowsPair(bodyA, bodyB)) continue;
           if (this._intersects(bodyA, bodyB)) return true;
         }
       }
@@ -1814,6 +2044,7 @@
         listB.forEach((bodyB) => {
           if (bodyA === bodyB) return;
           if (!bodyA.enabled || !bodyB.enabled) return;
+          if (!this._allowsPair(bodyA, bodyB)) return;
           if (!this._intersects(bodyA, bodyB)) return;
           hit = true;
           if (!bodyA.isSensor && !bodyB.isSensor) this._separate(bodyA, bodyB);
@@ -2011,25 +2242,48 @@
     }
 
     /** Advance the world using a fixed timestep accumulator. */
-    step(delta) {
+    step(delta, scenes) {
       this.stats.pairs = 0;
-      if (!this.enabled || this.bodies.length === 0) {
+      this._sceneFilter = scenes && scenes.length ? new Set(scenes) : null;
+      this._cache = new Map();
+      try {
+        if (!this.enabled || this.bodies.length === 0) {
+          this._processColliders();
+          return;
+        }
+        const dt = (delta || 0) * this.timeScale;
+        this.accumulator += dt;
+        let steps = 0;
+        const start = performance.now();
+        while (this.accumulator >= this.fixedStep && steps < this.maxSubSteps) {
+          this._integrate(this.fixedStep);
+          this.accumulator -= this.fixedStep;
+          steps += 1;
+        }
+        if (this.accumulator > this.fixedStep * this.maxSubSteps) this.accumulator = 0;
         this._processColliders();
-        return;
+        this.stats.steps = steps;
+        this.stats.time = performance.now() - start;
+      } finally {
+        this._cache = null;
+        this._sceneFilter = null;
       }
-      const dt = (delta || 0) * this.timeScale;
-      this.accumulator += dt;
-      let steps = 0;
-      const start = performance.now();
-      while (this.accumulator >= this.fixedStep && steps < this.maxSubSteps) {
-        this._integrate(this.fixedStep);
-        this.accumulator -= this.fixedStep;
-        steps += 1;
+    }
+
+    /** Steer a body toward a point; returns true once it is close enough. */
+    moveTo(object, x, y, speed) {
+      const body = object && object.body ? object.body : object;
+      if (!body || !body.velocity) return true;
+      const dx = x - body.centerX;
+      const dy = y - body.centerY;
+      const distance = Math.hypot(dx, dy);
+      const velocity = Math.max(1, speed === undefined ? 100 : speed);
+      if (distance <= Math.max(1, velocity / 60)) {
+        body.velocity.set(0, 0);
+        return true;
       }
-      if (this.accumulator > this.fixedStep * this.maxSubSteps) this.accumulator = 0;
-      this._processColliders();
-      this.stats.steps = steps;
-      this.stats.time = performance.now() - start;
+      body.velocity.set((dx / distance) * velocity, (dy / distance) * velocity);
+      return false;
     }
 
     _integrate(dt) {
@@ -2040,6 +2294,7 @@
         body.blocked.right = false;
         body.touching.none = true;
         if (!body.enabled || !body.active || body.object.active === false) return;
+        if (!this._bodyActive(body)) return;
         if (body.immovable) return;
 
         if (body.allowGravity) {
@@ -2112,9 +2367,12 @@
         const listB = this._bodiesOf(collider.b);
         listA.forEach((bodyA) => {
           if (!bodyA.enabled || !bodyA.active || bodyA.object.active === false) return;
+          if (!this._bodyActive(bodyA)) return;
           listB.forEach((bodyB) => {
             if (bodyA === bodyB) return;
             if (!bodyB.enabled || !bodyB.active || bodyB.object.active === false) return;
+            if (!this._bodyActive(bodyB)) return;
+            if (!this._allowsPair(bodyA, bodyB)) return;
             if (!this._intersects(bodyA, bodyB)) return;
             this.stats.pairs += 1;
             if (!collider.overlapOnly && !bodyA.isSensor && !bodyB.isSensor) {
@@ -2250,6 +2508,9 @@
       this.parent = null;
       this.group = null;
       this.isDragged = false;
+      this.isHovered = false;
+      this._interactive = null;
+      this._interactivePressed = false;
       this.events = new EventEmitter();
     }
 
@@ -2455,6 +2716,24 @@
       else this.scene.input.enableDrag(this, options);
       return this;
     }
+    /**
+     * Emit pointerover/pointerout/pointerdown/pointerup/click for this object.
+     * Options: hitArea(localX, localY, object), offsetX, offsetY,
+     * onClick, onHover, onOut, onDown, onUp.
+     */
+    setInteractive(options) {
+      const opts = options === undefined || options === true ? {} : options;
+      this._interactive = Object.assign({ enabled: true }, opts);
+      this.isHovered = false;
+      if (this.scene && this.scene.input) this.scene.input.addInteractive(this);
+      return this;
+    }
+    disableInteractive() {
+      if (this.scene && this.scene.input) this.scene.input.removeInteractive(this);
+      if (this._interactive) this._interactive.enabled = false;
+      this.isHovered = false;
+      return this;
+    }
 
     getBounds() {
       return { x: this.x, y: this.y, width: this.displayWidth, height: this.displayHeight };
@@ -2493,6 +2772,7 @@
       if (this.destroyed) return this;
       this.destroyed = true;
       this.active = false;
+      if (this.scene && this.scene.input) this.scene.input.removeInteractive(this);
       this.events.emit('destroy', this, fromScene);
       if (this.body) {
         this.body.destroy();
@@ -2517,13 +2797,57 @@
       this.frame = null;
       this.flipX = false;
       this.flipY = false;
+      this.tint = null;
       this._anim = null;
+      this._tintCache = null;
     }
 
     setTexture(texture, frame) {
       this.texture = texture;
       this.frame = frame === undefined ? null : frame;
+      this._tintCache = null;
       return this;
+    }
+    /** Multiply the texture by a color (cached per frame). */
+    setTint(color) {
+      this.tint = color || null;
+      this._tintCache = null;
+      return this;
+    }
+    clearTint() {
+      this.tint = null;
+      this._tintCache = null;
+      return this;
+    }
+    _tintedSource(image, sx, sy, sw, sh) {
+      const cache = this._tintCache;
+      if (
+        cache &&
+        cache.image === image &&
+        cache.color === this.tint &&
+        cache.sx === sx &&
+        cache.sy === sy &&
+        cache.sw === sw &&
+        cache.sh === sh
+      ) {
+        return cache.canvas;
+      }
+      let canvas = null;
+      try {
+        canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(sw));
+        canvas.height = Math.max(1, Math.round(sh));
+        const tintCtx = canvas.getContext('2d');
+        tintCtx.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        tintCtx.globalCompositeOperation = 'source-in';
+        tintCtx.fillStyle = this.tint;
+        tintCtx.fillRect(0, 0, canvas.width, canvas.height);
+        tintCtx.globalCompositeOperation = 'source-over';
+      } catch (error) {
+        canvas = null;
+      }
+      this._tintCache = { image, color: this.tint, sx, sy, sw, sh, canvas };
+      return canvas;
     }
     setFrame(frame) {
       this.frame = frame;
@@ -2620,29 +2944,28 @@
     draw(ctx) {
       const loader = this.scene ? this.scene.load : null;
       const frameData = this._resolveFrame();
-      if (frameData && frameData.image) {
-        const sx = frameData.x;
-        const sy = frameData.y;
-        const sw = frameData.width;
-        const sh = frameData.height;
-        ctx.save();
-        ctx.translate(this.flipX ? this.width : 0, this.flipY ? this.height : 0);
-        ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
-        ctx.drawImage(frameData.image, sx, sy, sw, sh, 0, 0, this.width, this.height);
-        ctx.restore();
+      const image =
+        frameData && frameData.image
+          ? frameData.image
+          : loader
+          ? loader.getImage(this.texture)
+          : null;
+      if (!image) {
+        ctx.fillStyle = this.texture || '#ffffff';
+        ctx.fillRect(0, 0, this.width, this.height);
         return;
       }
-      const image = loader ? loader.getImage(this.texture) : null;
-      if (image) {
-        ctx.save();
-        ctx.translate(this.flipX ? this.width : 0, this.flipY ? this.height : 0);
-        ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
-        ctx.drawImage(image, 0, 0, this.width, this.height);
-        ctx.restore();
-        return;
-      }
-      ctx.fillStyle = this.texture || '#ffffff';
-      ctx.fillRect(0, 0, this.width, this.height);
+      const sx = frameData ? frameData.x : 0;
+      const sy = frameData ? frameData.y : 0;
+      const sw = frameData ? frameData.width : image.width;
+      const sh = frameData ? frameData.height : image.height;
+      const tinted = this.tint ? this._tintedSource(image, sx, sy, sw, sh) : null;
+      ctx.save();
+      ctx.translate(this.flipX ? this.width : 0, this.flipY ? this.height : 0);
+      ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
+      if (tinted) ctx.drawImage(tinted, 0, 0, this.width, this.height);
+      else ctx.drawImage(image, sx, sy, sw, sh, 0, 0, this.width, this.height);
+      ctx.restore();
     }
 
     destroy(fromScene) {
@@ -2765,6 +3088,104 @@
       ctx.strokeStyle = this.color;
       ctx.lineWidth = this.lineWidth;
       ctx.stroke();
+    }
+  }
+
+  /** Local-space points, normalized so the shape starts at (0, 0). */
+  function normalizePolygonPoints(points) {
+    const list = (points || []).map((point) =>
+      Array.isArray(point)
+        ? { x: point[0], y: point[1] }
+        : { x: (point && point.x) || 0, y: (point && point.y) || 0 }
+    );
+    if (list.length === 0) return { points: [], width: 0, height: 0 };
+    let minX = list[0].x;
+    let minY = list[0].y;
+    let maxX = minX;
+    let maxY = minY;
+    list.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+    return {
+      points: list.map((point) => ({ x: point.x - minX, y: point.y - minY })),
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }
+
+  /**
+   * Filled/stroked polygon from local points: `[[0,0],[40,0],[20,30]]`.
+   * Points are normalized so the shape starts at the object's own position.
+   */
+  class Polygon extends GameObject {
+    constructor(scene, x, y, points, options) {
+      const shape = normalizePolygonPoints(points);
+      super(scene, x, y, shape.width, shape.height);
+      const opts = options || {};
+      this.type = 'Polygon';
+      this.points = shape.points;
+      this.color = opts.color || opts.fill || '#ffffff';
+      this.strokeColor = opts.stroke || null;
+      this.strokeWidth = opts.strokeWidth === undefined ? 1 : opts.strokeWidth;
+      this.closed = opts.closed !== false;
+    }
+    setPoints(points) {
+      const shape = normalizePolygonPoints(points);
+      this.points = shape.points;
+      this.width = shape.width;
+      this.height = shape.height;
+      return this;
+    }
+    setColor(color) {
+      this.color = color;
+      return this;
+    }
+    setStroke(color, width) {
+      this.strokeColor = color;
+      this.strokeWidth = width === undefined ? 1 : width;
+      return this;
+    }
+    /** Point-in-polygon test in local coordinates. */
+    containsPoint(x, y) {
+      const points = this.points;
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+        const a = points[i];
+        const b = points[j];
+        if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) {
+          inside = !inside;
+        }
+      }
+      return inside;
+    }
+    getArea() {
+      const points = this.points;
+      let area = 0;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+        area += (points[j].x + points[i].x) * (points[j].y - points[i].y);
+      }
+      return Math.abs(area / 2);
+    }
+    draw(ctx) {
+      if (this.points.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(this.points[0].x, this.points[0].y);
+      for (let i = 1; i < this.points.length; i += 1) {
+        ctx.lineTo(this.points[i].x, this.points[i].y);
+      }
+      if (this.closed) ctx.closePath();
+      if (this.color) {
+        ctx.fillStyle = this.color;
+        ctx.fill();
+      }
+      if (this.strokeColor) {
+        ctx.strokeStyle = this.strokeColor;
+        ctx.lineWidth = this.strokeWidth;
+        ctx.stroke();
+      }
     }
   }
 
@@ -3389,6 +3810,218 @@
     }
   }
 
+  /**
+   * Draggable value slider. Options: min, max, value, step, vertical, height,
+   * trackColor, fillColor, knobColor, knobRadius, disabled, onChange.
+   */
+  class Slider extends GameObject {
+    constructor(scene, x, y, width, options) {
+      const opts = options || {};
+      const height = opts.height || 20;
+      super(scene, x, y, width, height);
+      this.type = 'Slider';
+      this.min = opts.min === undefined ? 0 : opts.min;
+      this.max = opts.max === undefined ? 1 : opts.max;
+      this.step = opts.step || 0;
+      this.vertical = !!opts.vertical;
+      this.value = MathUtils.clamp(opts.value === undefined ? this.min : opts.value, this.min, this.max);
+      this.trackColor = opts.trackColor || 'rgba(255,255,255,0.14)';
+      this.fillColor = opts.fillColor || '#89b4fa';
+      this.knobColor = opts.knobColor || '#cdd6f4';
+      this.knobRadius = opts.knobRadius || height * 0.6;
+      this.disabled = !!opts.disabled;
+      this.dragging = false;
+      this.onChange = opts.onChange || null;
+    }
+    get ratio() {
+      return this.max === this.min ? 0 : (this.value - this.min) / (this.max - this.min);
+    }
+    getValue() {
+      return this.value;
+    }
+    setValue(value, silent) {
+      let next = MathUtils.clamp(value, this.min, this.max);
+      if (this.step > 0) next = Math.round((next - this.min) / this.step) * this.step + this.min;
+      next = MathUtils.clamp(next, this.min, this.max);
+      const changed = next !== this.value;
+      this.value = next;
+      if (changed && !silent && this.onChange) this.onChange(next, this);
+      return this;
+    }
+    setRange(min, max) {
+      this.min = min;
+      this.max = max;
+      this.setValue(this.value, true);
+      return this;
+    }
+    setEnabled(value) {
+      this.disabled = !(value === undefined ? true : !!value);
+      if (this.disabled) this.dragging = false;
+      return this;
+    }
+    _pointerPoint(pointer) {
+      const screen = this.isScreenSpace();
+      return screen
+        ? { x: pointer.x, y: pointer.y }
+        : { x: pointer.worldX, y: pointer.worldY };
+    }
+    _contains(point) {
+      const pad = this.knobRadius;
+      return (
+        point.x >= this.x - (this.vertical ? pad : 0) &&
+        point.x <= this.x + this.width + (this.vertical ? pad : 0) &&
+        point.y >= this.y - (this.vertical ? 0 : pad) &&
+        point.y <= this.y + this.height + (this.vertical ? 0 : pad)
+      );
+    }
+    update(dt) {
+      if (!this.scene || this.disabled) return;
+      const pointer = this.scene.input.pointer;
+      const point = this._pointerPoint(pointer);
+      if (pointer.justDown && this._contains(point)) this.dragging = true;
+      if (!pointer.isDown) this.dragging = false;
+      if (!this.dragging) return;
+      const ratio = this.vertical
+        ? 1 - MathUtils.clamp01((point.y - this.y) / Math.max(1, this.height))
+        : MathUtils.clamp01((point.x - this.x) / Math.max(1, this.width));
+      this.setValue(this.min + ratio * (this.max - this.min));
+    }
+    draw(ctx) {
+      const ratio = MathUtils.clamp01(this.ratio);
+      const thickness = 6;
+      const mid = this.height / 2;
+      if (this.vertical) {
+        const h = this.height;
+        const x = this.width / 2 - thickness / 2;
+        ctx.fillStyle = this.trackColor;
+        roundRectPath(ctx, x, 0, thickness, h, thickness / 2);
+        ctx.fill();
+        ctx.fillStyle = this.disabled ? '#45475a' : this.fillColor;
+        roundRectPath(ctx, x, h - h * ratio, thickness, Math.max(0, h * ratio), thickness / 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(this.width / 2, h - h * ratio, this.knobRadius * 0.8, 0, Math.PI * 2);
+        ctx.fillStyle = this.disabled ? '#6c7086' : this.knobColor;
+        ctx.fill();
+        return;
+      }
+      ctx.fillStyle = this.trackColor;
+      roundRectPath(ctx, 0, mid - thickness / 2, this.width, thickness, thickness / 2);
+      ctx.fill();
+      ctx.fillStyle = this.disabled ? '#45475a' : this.fillColor;
+      roundRectPath(ctx, 0, mid - thickness / 2, Math.max(0, this.width * ratio), thickness, thickness / 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(this.width * ratio, mid, this.knobRadius * 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = this.disabled ? '#6c7086' : this.knobColor;
+      ctx.fill();
+    }
+  }
+
+  /** Read-only 0..1 bar. Options: value, trackColor, fillColor, radius. */
+  class ProgressBar extends GameObject {
+    constructor(scene, x, y, width, height, options) {
+      const opts = options || {};
+      super(scene, x, y, width, height === undefined ? 12 : height);
+      this.type = 'ProgressBar';
+      this.value = MathUtils.clamp01(opts.value === undefined ? 0 : opts.value);
+      this.trackColor = opts.trackColor || 'rgba(255,255,255,0.12)';
+      this.fillColor = opts.fillColor || '#a6e3a1';
+      this.radius = opts.radius === undefined ? this.height / 2 : opts.radius;
+    }
+    setValue(value) {
+      this.value = MathUtils.clamp01(value);
+      return this;
+    }
+    setProgress(value) {
+      return this.setValue(value);
+    }
+    getValue() {
+      return this.value;
+    }
+    setColors(fill, track) {
+      if (fill) this.fillColor = fill;
+      if (track) this.trackColor = track;
+      return this;
+    }
+    draw(ctx) {
+      ctx.fillStyle = this.trackColor;
+      roundRectPath(ctx, 0, 0, this.width, this.height, this.radius);
+      ctx.fill();
+      if (this.value <= 0) return;
+      ctx.fillStyle = this.fillColor;
+      roundRectPath(ctx, 0, 0, Math.max(1, this.width * this.value), this.height, this.radius);
+      ctx.fill();
+    }
+  }
+
+  /** On/off switch. Options: width, height, value, onColor, offColor, disabled, onChange. */
+  class Toggle extends GameObject {
+    constructor(scene, x, y, options) {
+      const opts = options || {};
+      super(scene, x, y, opts.width || 54, opts.height || 28);
+      this.type = 'Toggle';
+      this.value = !!opts.value;
+      this.disabled = !!opts.disabled;
+      this.onColor = opts.onColor || '#a6e3a1';
+      this.offColor = opts.offColor || 'rgba(255,255,255,0.16)';
+      this.knobColor = opts.knobColor || '#ffffff';
+      this.onChange = opts.onChange || null;
+      this._knob = this.value ? 1 : 0;
+    }
+    setValue(value, silent) {
+      const next = !!value;
+      const changed = next !== this.value;
+      this.value = next;
+      if (changed && !silent && this.onChange) this.onChange(next, this);
+      return this;
+    }
+    getValue() {
+      return this.value;
+    }
+    toggle() {
+      return this.setValue(!this.value);
+    }
+    setEnabled(value) {
+      this.disabled = !(value === undefined ? true : !!value);
+      return this;
+    }
+    _contains(pointer) {
+      const screen = this.isScreenSpace();
+      const px = screen ? pointer.x : pointer.worldX;
+      const py = screen ? pointer.y : pointer.worldY;
+      return (
+        px >= this.x &&
+        px <= this.x + this.displayWidth &&
+        py >= this.y &&
+        py <= this.y + this.displayHeight
+      );
+    }
+    update(dt) {
+      if (this.scene && !this.disabled) {
+        const pointer = this.scene.input.pointer;
+        if (pointer.justDown && this._contains(pointer)) this.toggle();
+      }
+      const target = this.value ? 1 : 0;
+      this._knob += (target - this._knob) * Math.min(1, (dt || 0) * 12);
+      if (Math.abs(target - this._knob) < 0.01) this._knob = target;
+    }
+    draw(ctx) {
+      const h = this.height;
+      const w = this.width;
+      roundRectPath(ctx, 0, 0, w, h, Math.min(h, w) / 2);
+      ctx.fillStyle = this.disabled ? '#45475a' : this.value ? this.onColor : this.offColor;
+      ctx.fill();
+      const knobRadius = Math.max(2, h / 2 - 4);
+      const inset = knobRadius + 4;
+      const cx = inset + (w - inset * 2) * MathUtils.clamp01(this._knob);
+      ctx.beginPath();
+      ctx.arc(cx, h / 2, knobRadius, 0, Math.PI * 2);
+      ctx.fillStyle = this.disabled ? '#6c7086' : this.knobColor;
+      ctx.fill();
+    }
+  }
+
 /* ---- 40-effects.js ---- */
   const TWEEN_RESERVED = [
     'targets',
@@ -3399,6 +4032,7 @@
     'easing',
     'yoyo',
     'repeat',
+    'repeatDelay',
     'hold',
     'onStart',
     'onUpdate',
@@ -3435,6 +4069,7 @@
       this.ease = resolveEase(cfg.ease || cfg.easing);
       this.yoyo = !!cfg.yoyo;
       this.repeat = cfg.repeat === undefined ? 0 : cfg.repeat;
+      this.repeatDelay = cfg.repeatDelay || 0;
       this.hold = cfg.hold || 0;
       this.persist = !!cfg.persist;
       this.onStart = cfg.onStart || null;
@@ -3501,7 +4136,11 @@
           if (typeof prop.start === 'number' && typeof prop.end === 'number') {
             this._write(target, key, value);
           } else if (typeof prop.start === 'string' && typeof prop.end === 'string') {
-            this._write(target, key, MathUtils.lerp(0, 1, eased) < 0.5 ? prop.start : prop.end);
+            if (isColorString(prop.start) && isColorString(prop.end)) {
+              this._write(target, key, colorToCss(lerpColor(prop.start, prop.end, eased)));
+            } else {
+              this._write(target, key, eased < 0.5 ? prop.start : prop.end);
+            }
           }
         });
       });
@@ -3549,7 +4188,8 @@
           this.direction = 1;
           this.elapsed = 0;
           if (this.onRepeat) this.onRepeat(this, this.repeatCount);
-          if (this.hold > 0) this.holdElapsed = this.hold;
+          const pause = Math.max(this.hold, this.repeatDelay);
+          if (pause > 0) this.holdElapsed = pause;
           return;
         }
         this.state = 'complete';
@@ -3957,6 +4597,13 @@
       this.events.emit('stop-all');
       return this;
     }
+  }
+
+  /** True for '#rgb', '#rrggbb', '#rrggbbaa', 'rgb(...)' and 'rgba(...)'. */
+  function isColorString(value) {
+    if (typeof value !== 'string') return false;
+    const text = value.trim();
+    return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || /^rgba?\(/i.test(text);
   }
 
   function parseColor(value) {
@@ -4602,6 +5249,7 @@
             opacity: layer.opacity === undefined ? 1 : layer.opacity,
             solid: !!layer.solid,
             collides: layer.collides || null,
+            objects: layer.objects || [],
             offsetX: layer.offsetX || 0,
             offsetY: layer.offsetY || 0
           },
@@ -4614,6 +5262,20 @@
     getLayer(name) {
       if (!name) return this.layers[0] || null;
       return this.layers.find((layer) => layer.name === name) || null;
+    }
+    /** Object entries of a layer taken from the map JSON, or []. */
+    getObjects(name) {
+      const layer = this.getLayer(name);
+      if (!layer || !Array.isArray(layer.objects)) return [];
+      return layer.objects;
+    }
+    getObjectByName(name) {
+      let found = null;
+      this.layers.forEach((layer) => {
+        if (found || !Array.isArray(layer.objects)) return;
+        found = layer.objects.find((entry) => entry && entry.name === name) || null;
+      });
+      return found;
     }
     getTileAt(layerName, tileX, tileY) {
       const layer = this.getLayer(layerName);
@@ -4895,6 +5557,26 @@
           scene.children.push(object);
           return object;
         },
+        polygon(x, y, points, options) {
+          const object = new Polygon(scene, x, y, points, options);
+          scene.children.push(object);
+          return object;
+        },
+        slider(x, y, width, options) {
+          const object = new Slider(scene, x, y, width, options);
+          scene.children.push(object);
+          return object;
+        },
+        progressBar(x, y, width, height, options) {
+          const object = new ProgressBar(scene, x, y, width, height, options);
+          scene.children.push(object);
+          return object;
+        },
+        toggle(x, y, options) {
+          const object = new Toggle(scene, x, y, options);
+          scene.children.push(object);
+          return object;
+        },
         animatedSprite(x, y, width, height, texture) {
           const object = new Sprite(scene, x, y, width, height, texture);
           scene.children.push(object);
@@ -4927,6 +5609,20 @@
     restart(data, options) {
       if (this.game) this.game.startScene(this.key, data, options);
       return this;
+    }
+    /** Start another scene on top of this one; both keep updating. */
+    launch(key, data) {
+      if (this.game) this.game.launchScene(key, data);
+      return this;
+    }
+    /** Move this active scene above the others. */
+    bringToTop() {
+      if (this.game) this.game.bringToTop(this.key);
+      return this;
+    }
+    /** True while this scene is in the active stack. */
+    isActive() {
+      return !!(this.game && this.game.isActive(this.key));
     }
     stop() {
       if (this.game) this.game.stopScene(this.key);
@@ -5109,6 +5805,7 @@
 
       this.scenes = {};
       this.sceneOrder = [];
+      this.sceneStack = [];
       this.currentScene = null;
       this.running = false;
       this.paused = false;
@@ -5213,13 +5910,53 @@
       return this.scenes[key] || null;
     }
     removeScene(key) {
-      if (this.currentScene && this.currentScene.key === key) {
-        this._cleanupScene(this.currentScene);
-        this.currentScene = null;
-      }
+      const scene = this.scenes[key];
+      if (scene) this._stopSceneInternal(scene);
       delete this.scenes[key];
       this.sceneOrder = this.sceneOrder.filter((item) => item !== key);
       return this;
+    }
+
+    /** True while the scene (or the current one) is in the active stack. */
+    isActive(key) {
+      const target = key || (this.currentScene ? this.currentScene.key : null);
+      return !!target && this.sceneStack.indexOf(target) !== -1;
+    }
+    /** Active scenes from bottom to top. */
+    getActiveScenes() {
+      return this.sceneStack.map((key) => this.scenes[key]).filter(Boolean);
+    }
+    _topScene() {
+      const key = this.sceneStack[this.sceneStack.length - 1];
+      return key ? this.scenes[key] || null : null;
+    }
+    /** Raise an active scene above the others (topmost renders last). */
+    bringToTop(key) {
+      const target = key || (this.currentScene ? this.currentScene.key : null);
+      if (!target || this.sceneStack.indexOf(target) === -1) return this;
+      this.sceneStack = this.sceneStack.filter((item) => item !== target);
+      this.sceneStack.push(target);
+      const scene = this.scenes[target] || null;
+      if (scene) this.currentScene = scene;
+      this.events.emit('scene-bring-to-top', scene);
+      return this;
+    }
+    /** Lower an active scene below the others. */
+    sendToBack(key) {
+      const target = key || (this.currentScene ? this.currentScene.key : null);
+      if (!target || this.sceneStack.indexOf(target) === -1) return this;
+      this.sceneStack = this.sceneStack.filter((item) => item !== target);
+      this.sceneStack.unshift(target);
+      this.events.emit('scene-sent-to-back', this.scenes[target] || null);
+      return this;
+    }
+    /** Start a scene on top of the active ones without stopping them. */
+    launchScene(key, data) {
+      if (!this.scenes[key]) {
+        console.error('[Chroms] Scene not found: ' + key);
+        return null;
+      }
+      return this._activateScene(key, data, { keepOthers: true });
     }
 
     /** Switch to a scene. Options: fade (ms), fadeColor. */
@@ -5251,34 +5988,41 @@
       }
       return this._activateScene(key, data);
     }
-    _activateScene(key, data) {
+    _activateScene(key, data, options) {
       const scene = this.scenes[key];
       if (!scene) return null;
-      if (this.currentScene && this.currentScene !== scene) {
-        const previous = this.currentScene;
-        previous.status = 'stopped';
-        if (typeof previous.shutdown === 'function') previous.shutdown();
-        this.events.emit('scene-stop', previous);
-        this._cleanupScene(previous);
-      } else if (this.currentScene === scene) {
-        const previous = this.currentScene;
-        if (typeof previous.shutdown === 'function') previous.shutdown();
-        this._cleanupScene(previous);
+      const opts = options || {};
+      if (opts.keepOthers) {
+        if (this.sceneStack.indexOf(key) !== -1) {
+          this.bringToTop(key);
+          return scene;
+        }
+      } else {
+        this.getActiveScenes().forEach((active) => {
+          if (active !== scene) this._stopSceneInternal(active);
+        });
       }
+      return this._startSceneInternal(scene, data);
+    }
+
+    _startSceneInternal(scene, data) {
+      if (typeof scene.shutdown === 'function') scene.shutdown();
+      this._cleanupScene(scene);
+      if (this.sceneStack.indexOf(scene.key) === -1) this.sceneStack.push(scene.key);
       this.currentScene = scene;
       scene.data = data || {};
       scene.status = 'loading';
       scene.init(data || {});
       this.events.emit('scene-start', scene);
+      if (this.sceneStack.length > 1) this.events.emit('scene-launch', scene);
       scene.preload();
-      const loadingKey = scene.key;
       this.load.start(
         (progress) => {
           scene.loadProgress = progress;
           this.events.emit('scene-load-progress', scene, progress);
         },
         () => {
-          if (this.currentScene !== scene) return;
+          if (this.sceneStack.indexOf(scene.key) === -1) return;
           scene.status = 'running';
           scene.create();
           this.events.emit('scene-create', scene);
@@ -5286,15 +6030,21 @@
       );
       return scene;
     }
+
+    _stopSceneInternal(scene) {
+      if (!scene) return this;
+      scene.status = 'stopped';
+      if (typeof scene.shutdown === 'function') scene.shutdown();
+      this._cleanupScene(scene);
+      this.sceneStack = this.sceneStack.filter((key) => key !== scene.key);
+      this.events.emit('scene-stop', scene);
+      if (this.currentScene === scene) this.currentScene = this._topScene();
+      return this;
+    }
     stopScene(key) {
       const scene = key ? this.scenes[key] : this.currentScene;
       if (!scene) return this;
-      if (typeof scene.shutdown === 'function') scene.shutdown();
-      this._cleanupScene(scene);
-      scene.status = 'stopped';
-      if (this.currentScene === scene) this.currentScene = null;
-      this.events.emit('scene-stop', scene);
-      return this;
+      return this._stopSceneInternal(scene);
     }
     _cleanupScene(scene) {
       if (!scene) return;
@@ -5456,11 +6206,13 @@
 
     _simulate(delta) {
       if (!(document.hidden && this.pauseOnHidden)) {
-        const scene = this.currentScene;
-        if (scene && scene.status === 'running') {
+        const running = [];
+        this.getActiveScenes().forEach((scene) => {
+          if (scene.status !== 'running') return;
           scene._update(delta);
-          this.physics.step(delta);
-        }
+          running.push(scene);
+        });
+        if (running.length) this.physics.step(delta, running);
       }
       this.tweens.update(delta);
       this.time.update(delta);
@@ -5504,9 +6256,9 @@
       ctx.imageSmoothingEnabled = this.antialias;
       ctx.fillStyle = this.backgroundColor;
       ctx.fillRect(0, 0, this.width, this.height);
-      if (this.currentScene) {
-        this.currentScene._render(ctx);
-      }
+      this.getActiveScenes().forEach((scene) => {
+        scene._render(ctx);
+      });
       if (this.load.isLoading && this.loadingStyle.show) {
         this._drawLoading(ctx);
       }
@@ -5555,7 +6307,8 @@
           'FPS ' + this.fps,
           'objects ' + objects,
           'bodies ' + this.physics.bodies.length,
-          'scene ' + (this.currentScene ? this.currentScene.key : '-')
+          'scene ' + (this.currentScene ? this.currentScene.key : '-'),
+          'scenes ' + this.sceneStack.length
         ];
         ctx.fillStyle = 'rgba(0,0,0,0.55)';
         ctx.fillRect(8, 8, 150, 16 * lines.length + 8);
@@ -5744,10 +6497,9 @@
     destroy() {
       this.stop();
       this.events.emit('destroy', this);
-      if (this.currentScene) {
-        this._cleanupScene(this.currentScene);
-        this.currentScene = null;
-      }
+      this.getActiveScenes().forEach((scene) => this._stopSceneInternal(scene));
+      this.sceneStack = [];
+      this.currentScene = null;
       this.sound.stopAll();
       this.input.destroy();
       this._cleanupFns.forEach((fn) => fn());
@@ -5798,13 +6550,17 @@
           'tilemap',
           'button',
           'joystick',
+          'slider',
+          'progressBar',
+          'toggle',
+          'polygon',
           'animatedSprite',
           'existing'
         ],
         physics:
-          'AABB world: body enablePhysics({...}), setVelocity, setGravityY, setBounce, setImmovable, collideWorldBounds; world.collide/overlap/addCollider/raycast/collideTilemap',
+          'AABB world: body enablePhysics({...}), setVelocity, setGravityY, setBounce, setImmovable, collideWorldBounds; collisionGroup/collidesWith and world.setCollisionMatrix for layers; world.collide/overlap/addCollider/raycast/collideTilemap/moveTo',
         input:
-          'input.isDown(code), isJustDown, addAction(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown}, enableDrag(object), gamepad helpers',
+          'input.isDown(code), isJustDown, addAction(name, codes), addKeyCombo(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown,button}, object.setInteractive({ onClick, onHover, onOut }), enableDrag(object), gamepad helpers',
         tweens: 'scene.tweens.add({ targets, x, y, alpha, duration, ease, yoyo, repeat, delay, onComplete })',
         timers: 'scene.time.delayedCall(ms, fn), scene.time.addEvent({ delay, loop, callback })',
         animation:
@@ -5813,9 +6569,9 @@
           'scene.add.particles(x, y, { speed, lifespan, quantity, frequency, colors, gravityY, emitZone })',
         camera:
           'scene.camera.follow(target, { lerpX, lerpY, offsetX, offsetY }); setBounds, setZoom, shake, fadeOut',
-        storage: 'game.storage.save(key, value), load(key, fallback)',
+        storage: 'game.storage.save(key, value), load(key, fallback), export(), import(snapshot)',
         audio:
-          'scene.sound.play(key), musicPlay(key, { fade }), beep({ frequency }), mute/toggleMute',
+          'scene.sound.play(key), musicPlay(key, { fade }), musicPause(), musicResume(), beep({ frequency }), mute/toggleMute',
         tilemap:
           'scene.add.tilemap(jsonOrKey) with layers, tileset, solid; physics.collideTilemap(object, map)'
       },
@@ -5825,7 +6581,10 @@
           'an exception from update() or render() is logged once, emitted as game.events "error", drawn over the canvas and pauses the game; game.clearError() dismisses it, catchErrors: false rethrows',
         overlay: 'Backquote toggles the FPS/body debug overlay'
       },
+      scenesMulti:
+        'scene.launch(key) starts a scene on top of the running ones; game.getActiveScenes() returns the stack, scene.bringToTop() reorders it, scene.isActive() checks membership',
       gotchas: [
+        'All active scenes share one physics world and one input pointer; a paused or sleeping scene has its bodies frozen automatically.',
         'Physics is AABB only; rotated sprites use their unrotated box.',
         'Call scene.physics.collide/addCollider once; the world checks the pair every fixed step.',
         'Set velocities in update(); the physics step runs after scene.update.',
@@ -5869,6 +6628,10 @@
     Group,
     Button,
     Joystick,
+    Polygon,
+    Slider,
+    ProgressBar,
+    Toggle,
     ParticleEmitter,
     Body,
     PhysicsWorld,

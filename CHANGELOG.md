@@ -2,6 +2,60 @@
 
 All notable changes to Chroms. The project follows semantic versioning.
 
+## [1.2.0] — 2026-11-26
+
+A feature release: layered scenes, collision layers, UI widgets and richer input. Every 1.1.x API keeps working.
+
+### Added — scenes
+
+- Multiple active scenes: `game.launchScene(key)`, `scene.launch(key)`, `game.getActiveScenes()`, `game.sceneStack`, `bringToTop()` / `sendToBack()`, `scene.isActive()`, and the events `scene-launch`, `scene-bring-to-top`, `scene-sent-to-back`.
+- All running scenes update and render in stack order (bottom to top); `game.currentScene` is the topmost one.
+- Physics is scene-aware: bodies of paused or sleeping scenes are skipped while other scenes keep simulating.
+
+### Added — physics
+
+- Collision layers and masks: `body.collisionGroup`, `body.collidesWith`, `setCollisionGroup()`, `setCollidesWith()`, plus `world.setCollisionMatrix({ player: ['enemy'] })`. Honoured by colliders, `overlap()` and `collideNow()`.
+- `world.moveTo(object, x, y, speed)` and `body.setVelocityFromAngle(degrees, speed)`.
+- A per-step cache for body lists, so collider checks stop rebuilding arrays for every pair.
+
+### Added — UI and rendering
+
+- `add.slider`, `add.progressBar` and `add.toggle` with change callbacks, ranges, steps, disabled states and an animated toggle knob.
+- `add.polygon(x, y, points, { color, stroke, closed })` with `containsPoint()` and `getArea()`.
+- `sprite.setTint(color)` / `clearTint()`, cached per texture frame through an offscreen canvas.
+- `tilemap.getObjects(layer)` and `tilemap.getObjectByName(name)` for object layers.
+
+### Added — input
+
+- `object.setInteractive({ onClick, onHover, onOut, onDown, onUp, hitArea, offsetX, offsetY })` emits `pointerover`, `pointerout`, `pointerdown`, `pointerup` and `click`, keeps `object.isHovered` in sync and unregisters on destroy.
+- Key chords: `input.addKeyCombo(name, codes)`, `keyComboDown()`, `keyComboJustDown()`.
+- `input.pointer.button` and pointer pressure.
+
+### Added — effects, data, audio
+
+- Tween `repeatDelay`.
+- Color tweens now interpolate `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()` and `rgba()` values instead of flipping at 50%.
+- `storage.export()` and `storage.import(snapshot, replace?)`.
+- `sound.musicPause()`, `sound.musicResume()` and `sound.isMusicPlaying()`.
+
+### Changed
+
+- `removeScene(key)` stops and cleans the scene through the same path as `stopScene()`.
+- `game.destroy()` shuts down every active scene, not only the current one.
+
+### Docs
+
+- README, English and Russian docs, `docs/api.json` and `docs/llms.txt` describe the 1.2.0 API.
+
+### Tests
+
+- Coverage for multi-scene launch/pause/reorder/stop, collision layers and matrix, steering helpers, slider/progress/toggle widgets, polygon geometry, sprite tinting, interactive pointer events, key chords, color tweens, `repeatDelay`, storage snapshots, music pause and tilemap object layers.
+
+### Known limitations
+
+- All active scenes share one physics world and one pointer; `input.pointer.worldX/Y` belongs to the last updated scene, so HUD scenes should use `setScrollFactor(0)`.
+- Scenes still load one at a time; launching a scene while another one is mid-load is not supported.
+
 ## [1.1.3] — 2026-11-26
 
 Small bug-fix release with manual stepping and a runtime error overlay.

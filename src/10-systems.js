@@ -336,14 +336,19 @@
         isDown: false,
         justDown: false,
         justUp: false,
-        downTime: 0
+        downTime: 0,
+        button: 0
       };
       this.pointers = new Map();
+      this.combos = {};
       this.wheelDelta = 0;
       this.enabled = true;
       this.gamepads = [];
       this._dragTargets = [];
       this._dragging = null;
+      this._interactive = [];
+      this._hovered = [];
+      this._pressure = 0;
       this._listeners = [];
       this.events = new EventEmitter();
 
@@ -384,6 +389,8 @@
         this.pointer.isDown = true;
         this.pointer.justDown = true;
         this.pointer.downTime = performance.now();
+        this.pointer.button = e.button || 0;
+        this._pressure = e.pressure === undefined ? 1 : e.pressure;
         this.pointers.set(e.pointerId, { x: point.x, y: point.y, isDown: true });
         if (this._dragTargets.length) this._beginDrag();
       });
@@ -489,8 +496,105 @@
       return codes.every((code) => this.isDown(code));
     }
 
-    /** Poll gamepads; called every frame by the game. */
+    /**
+     * Bind a chord, e.g. `input.addKeyCombo('dash', ['ShiftLeft', 'KeyD'])`.
+     * `keyComboJustDown` is true on the frame the last key completes the chord.
+     */
+    addKeyCombo(name, codes) {
+      this.combos[name] = Array.isArray(codes) ? codes.slice() : [codes];
+      return this;
+    }
+    keyComboDown(name) {
+      const codes = this.combos[name];
+      return codes ? codes.every((code) => !!this.keys[code]) : false;
+    }
+    keyComboJustDown(name) {
+      const codes = this.combos[name];
+      if (!codes || !codes.every((code) => !!this.keys[code])) return false;
+      return codes.some((code) => !!this.justPressed[code]);
+    }
+
+    /** Make a game object emit pointerover/out/down/up/click. */
+    addInteractive(object) {
+      if (object && this._interactive.indexOf(object) === -1) this._interactive.push(object);
+      return object;
+    }
+    removeInteractive(object) {
+      this._interactive = this._interactive.filter((item) => item !== object);
+      this._hovered = this._hovered.filter((item) => item !== object);
+      return object;
+    }
+    _interactivePoint(object) {
+      const screen = typeof object.isScreenSpace === 'function' && object.isScreenSpace();
+      return screen
+        ? { x: this.pointer.x, y: this.pointer.y }
+        : { x: this.pointer.worldX, y: this.pointer.worldY };
+    }
+    _interactiveContains(object, x, y) {
+      if (object.active === false || object.visible === false || object.destroyed) return false;
+      const opts = object._interactive || {};
+      if (typeof opts.hitArea === 'function') return !!opts.hitArea(x - object.x, y - object.y, object);
+      const left = object.x + (opts.offsetX || 0);
+      const top = object.y + (opts.offsetY || 0);
+      return (
+        x >= left &&
+        x <= left + object.displayWidth &&
+        y >= top &&
+        y <= top + object.displayHeight
+      );
+    }
+    _emitInteractive(object, type) {
+      const opts = object._interactive || {};
+      const handlers = {
+        pointerover: 'onHover',
+        pointerout: 'onOut',
+        pointerdown: 'onDown',
+        pointerup: 'onUp',
+        click: 'onClick'
+      };
+      if (object.events) object.events.emit(type, object, this.pointer);
+      const handler = opts[handlers[type]];
+      if (handler) handler(object, this.pointer);
+      if (this.events) this.events.emit('object-' + type, object, this.pointer);
+    }
+    _processInteractive() {
+      this._interactive = this._interactive.filter(
+        (object) => object && !object.destroyed && object._interactive && object._interactive.enabled !== false
+      );
+      if (!this.enabled || this._interactive.length === 0) {
+        this._hovered = [];
+        return;
+      }
+      const pointer = this.pointer;
+      const hovered = [];
+      this._interactive.forEach((object) => {
+        const point = this._interactivePoint(object);
+        const inside = this._interactiveContains(object, point.x, point.y);
+        const wasInside = this._hovered.indexOf(object) !== -1;
+        if (inside) hovered.push(object);
+        if (inside && !wasInside) {
+          object.isHovered = true;
+          this._emitInteractive(object, 'pointerover');
+        } else if (!inside && wasInside) {
+          object.isHovered = false;
+          this._emitInteractive(object, 'pointerout');
+        }
+        if (inside && pointer.justDown) {
+          object._interactivePressed = true;
+          this._emitInteractive(object, 'pointerdown');
+        }
+        if (pointer.justUp && object._interactivePressed) {
+          object._interactivePressed = false;
+          if (inside) this._emitInteractive(object, 'click');
+          this._emitInteractive(object, 'pointerup');
+        }
+      });
+      this._hovered = hovered;
+    }
+
+    /** Poll gamepads and interactive objects; called every frame by the game. */
     update() {
+      this._processInteractive();
       if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
       const pads = navigator.getGamepads();
       this.gamepads = [];
@@ -606,6 +710,8 @@
       this._listeners = [];
       this._dragTargets = [];
       this._dragging = null;
+      this._interactive = [];
+      this._hovered = [];
       this.enabled = false;
     }
   }
@@ -628,6 +734,7 @@
       this._context = null;
       this._unlocked = false;
       this._lastBeepAt = 0;
+      this._musicPaused = false;
       this.events = new EventEmitter();
     }
 
@@ -749,6 +856,33 @@
         this._fadeTo(handle, handle.baseVolume * this.musicVolume * this.masterVolume, fade);
       }
       return handle;
+    }
+    /** Pause the current music track, keeping its position. */
+    musicPause() {
+      if (!this.music || !this.music.audio) return this;
+      try {
+        this.music.audio.pause();
+        this._musicPaused = true;
+      } catch (error) {
+        /* ignore */
+      }
+      return this;
+    }
+    /** Resume a track paused with musicPause(). */
+    musicResume() {
+      if (!this.music || !this.music.audio || !this._musicPaused) return this;
+      try {
+        const promise = this.music.audio.play();
+        if (promise && promise.catch) promise.catch(() => {});
+        this._musicPaused = false;
+      } catch (error) {
+        /* ignore */
+      }
+      return this;
+    }
+    /** True while music is playing and not paused. */
+    isMusicPlaying() {
+      return !!(this.music && !this._musicPaused);
     }
     stopMusic(fade) {
       if (!this.music) return this;

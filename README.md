@@ -1,4 +1,4 @@
-# Chroms Engine v1.1.3
+# Chroms Engine v1.2.0
 
 A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable API, and AI agents that need a predictable, documented surface.
 
@@ -52,6 +52,21 @@ v1.0 was a four-class proof of concept. v1.1 is a complete small engine:
 - **Tilemaps** — JSON maps, layers, tinted color tiles or sprite-sheet tiles, per-layer collision, dynamic tile edits.
 - **Persistence & math** — localStorage save manager, seeded RNG, vectors, angle/distance helpers, 30+ easings.
 - **AI support** — `Chroms.describe()` runtime manifest plus [`docs/llms.txt`](docs/llms.txt) and [`docs/api.json`](docs/api.json).
+
+## What is new in 1.2.0
+
+- **Multiple active scenes** — `scene.launch(key)` starts an overlay or HUD over a running scene, `game.getActiveScenes()` returns the stack in render order, `bringToTop()` / `sendToBack()` reorder it, `scene.isActive()` checks membership. Paused or sleeping scenes keep their bodies frozen automatically.
+- **Collision layers** — `body.setCollisionGroup('player')`, `body.setCollidesWith(['enemy'])` and `world.setCollisionMatrix({ player: ['enemy'], enemy: ['player'] })`.
+- **UI widgets** — `add.slider`, `add.progressBar`, `add.toggle` with change callbacks, values, steps and disabled states.
+- **Rendering** — `add.polygon(points, { color, stroke })` with `containsPoint()` and `getArea()`, and `sprite.setTint(color)` / `clearTint()` (cached per frame).
+- **Pointer events on any object** — `object.setInteractive({ onClick, onHover, onOut, onDown, onUp })` emits `pointerover`/`pointerout`/`pointerdown`/`pointerup`/`click`; `input.pointer.button` reports the mouse button.
+- **Key chords** — `input.addKeyCombo('dash', ['ShiftLeft', 'KeyD'])` with `keyComboDown()` / `keyComboJustDown()`.
+- **Tweens** — `repeatDelay`, plus real color interpolation for `'#rrggbb'` / `rgb()` strings.
+- **Data and audio** — `storage.export()` / `storage.import(snapshot)`, `sound.musicPause()` / `musicResume()` / `isMusicPlaying()`.
+- **Tilemaps** — object layers via `tilemap.getObjects(layer)` and `getObjectByName(name)`.
+- **Physics** — `physics.moveTo(object, x, y, speed)`, `body.setVelocityFromAngle(deg, speed)`, per-frame body caching for collider checks.
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## What changed in 1.1.3
 
