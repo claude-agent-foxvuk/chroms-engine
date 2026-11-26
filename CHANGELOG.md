@@ -23,6 +23,7 @@ A bug-fix release with a small set of additions. Nothing in 1.1.1 is removed.
 - `physics.stats.pairs` accumulated for the whole session instead of reporting pairs per step.
 - Starting a second `camera.fadeIn()`/`fadeOut()` while one was running tweened the same alpha twice.
 - `Body.setAllowGravity` was defined twice.
+- `AnimationManager` kept a reference to every sprite that ever played an animation, including destroyed ones. A sprite now removes itself from the registry in `destroy()`, so long-running games no longer grow an unbounded sprite list.
 
 ### Docs
 

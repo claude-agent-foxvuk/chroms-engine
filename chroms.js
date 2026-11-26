@@ -2645,6 +2645,8 @@
 
     destroy(fromScene) {
       if (this._anim) this._anim.playing = false;
+      if (this.scene && this.scene.anims) this.scene.anims.forget(this);
+      this._anim = null;
       return super.destroy(fromScene);
     }
   }
@@ -3930,6 +3932,12 @@
     _liveSprites() {
       this.sprites = this.sprites.filter((sprite) => sprite && !sprite.destroyed);
       return this.sprites;
+    }
+    /** Drop a sprite from the registry; called when it is destroyed. */
+    forget(sprite) {
+      const index = this.sprites.indexOf(sprite);
+      if (index !== -1) this.sprites.splice(index, 1);
+      return this;
     }
     pauseAll() {
       this._liveSprites().forEach((sprite) => sprite.pause());

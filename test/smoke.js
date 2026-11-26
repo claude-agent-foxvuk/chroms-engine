@@ -430,6 +430,17 @@ sceneRef.anims.stopAll();
 assert.ok(!sceneRef.player.isPlaying(), 'anims.stopAll should stop playback');
 sceneRef.player.play('spin');
 
+// The animation registry must not keep destroyed sprites alive.
+const disposable = sceneRef.add.sprite(30, 30, 10, 10, '#ffffff');
+disposable.play('spin');
+assert.ok(sceneRef.anims.sprites.indexOf(disposable) !== -1, 'play should register the sprite');
+disposable.destroy();
+assert.strictEqual(
+  sceneRef.anims.sprites.indexOf(disposable),
+  -1,
+  'destroyed sprites should leave the animation registry'
+);
+
 // Group lookup helpers.
 const wall = sceneRef.group.getFirst(true);
 wall.setName('wall');

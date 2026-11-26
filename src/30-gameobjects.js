@@ -443,6 +443,8 @@
 
     destroy(fromScene) {
       if (this._anim) this._anim.playing = false;
+      if (this.scene && this.scene.anims) this.scene.anims.forget(this);
+      this._anim = null;
       return super.destroy(fromScene);
     }
   }

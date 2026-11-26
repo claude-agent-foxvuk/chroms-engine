@@ -543,6 +543,12 @@
       this.sprites = this.sprites.filter((sprite) => sprite && !sprite.destroyed);
       return this.sprites;
     }
+    /** Drop a sprite from the registry; called when it is destroyed. */
+    forget(sprite) {
+      const index = this.sprites.indexOf(sprite);
+      if (index !== -1) this.sprites.splice(index, 1);
+      return this;
+    }
     pauseAll() {
       this._liveSprites().forEach((sprite) => sprite.pause());
       this.events.emit('pause-all');
