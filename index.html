@@ -1,71 +1,416 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Игра на движке Chroms</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chroms Engine v1.1 — Arena demo</title>
   <style>
-    body { margin: 0; background: #11111b; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    canvas { border: 2px solid #313244; border-radius: 8px; }
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #11111b;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 14px;
+      font-family: system-ui, sans-serif;
+      color: #a6adc8;
+    }
+    .chroms-canvas {
+      border: 2px solid #313244;
+      border-radius: 10px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    .links { font-size: 13px; }
+    .links a { color: #89b4fa; text-decoration: none; margin: 0 8px; }
+    .links a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <script src="chroms.js"></script>
   <script>
+    class MenuScene extends Chroms.Scene {
+      constructor() {
+        super('MenuScene');
+      }
+
+      create() {
+        this.add.rect(0, 0, 800, 600, '#1e1e2e');
+        this.add.circle(140, 120, 180, 'rgba(137,180,250,0.08)');
+        this.add.circle(690, 500, 220, 'rgba(203,166,247,0.07)');
+
+        const title = this.add.text(400, 140, 'CHROMS', {
+          font: 'bold 72px sans-serif',
+          color: '#89b4fa'
+        });
+        title.setOrigin(0.5, 0.5);
+        this.tweens.add({
+          targets: title,
+          y: 152,
+          duration: 1600,
+          ease: 'sine.inOut',
+          yoyo: true,
+          repeat: -1
+        });
+
+        const subtitle = this.add.text(400, 214, 'v1.1 — 2D engine for humans and AI', {
+          font: '18px sans-serif',
+          color: '#cdd6f4'
+        });
+        subtitle.setOrigin(0.5, 0.5);
+
+        this.add.text(400, 270, 'Collect glowing orbs, avoid red hunters.\nMove with WASD / arrows. Escape pauses.', {
+          font: '16px sans-serif',
+          color: '#a6adc8',
+          align: 'center',
+          lineSpacing: 8
+        }).setOrigin(0.5, 0.5);
+
+        const best = this.game.storage.load('best', 0);
+        this.add.text(400, 330, 'Best score: ' + best, {
+          font: 'bold 18px sans-serif',
+          color: '#f9e2af'
+        }).setOrigin(0.5, 0.5);
+
+        this.add.button(320, 380, 160, 52, 'PLAY', {
+          color: '#89b4fa',
+          hoverColor: '#a5c8ff',
+          pressColor: '#74a0e8',
+          textColor: '#11111b',
+          fontSize: 20,
+          radius: 10,
+          onClick: () => this.start('PlayScene', {}, { fade: 350 })
+        });
+
+        this.add.particles(400, 470, {
+          speed: { min: 5, max: 25 },
+          angle: { min: 200, max: 340 },
+          lifespan: { min: 1200, max: 2200 },
+          frequency: 120,
+          quantity: 1,
+          size: 3,
+          colors: ['#89b4fa', '#cba6f7', '#89dceb'],
+          gravityY: -8,
+          blendMode: 'lighter'
+        });
+
+        this.add.text(400, 560, 'Chroms.describe() is available in the console for AI agents.', {
+          font: '12px monospace',
+          color: '#585b70'
+        }).setOrigin(0.5, 0.5);
+      }
+    }
+
     class PlayScene extends Chroms.Scene {
       constructor() {
         super('PlayScene');
       }
 
-      preload() {
-        // Сюда можно загружать свои картинки:
-        // this.load.image('hero', 'assets/hero.png');
-      }
-
       create() {
         this.score = 0;
+        this.lives = 3;
+        this.timeLeft = 30;
+        this.finished = false;
 
-        // Создаём игрока (если ключ 'hero' не загружен, нарисует синий квадрат)
-        this.player = this.add.sprite(380, 280, 40, 40, '#89b4fa');
-        
-        // Создаём цель
-        this.target = this.add.sprite(200, 150, 25, 25, '#f9e2af');
+        this.physics.setBounds(0, 0, 800, 600);
+        this.physics.setGravity(0, 0);
 
-        // Добавляем текст счёта
-        this.scoreText = this.add.text(20, 35, 'Chroms Score: 0', {
-          font: 'bold 22px sans-serif',
+        this.add.rect(0, 0, 800, 600, '#181825').setDepth(-20);
+        for (let x = 0; x <= 800; x += 40) {
+          this.add.line(x, 0, x, 600, 'rgba(69,71,90,0.22)', 1).setDepth(-10);
+        }
+        for (let y = 0; y <= 600; y += 40) {
+          this.add.line(0, y, 800, y, 'rgba(69,71,90,0.22)', 1).setDepth(-10);
+        }
+
+        this.player = this.add.rect(380, 280, 36, 36, '#89b4fa', 9);
+        this.player.enablePhysics({ collideWorldBounds: true }).setMaxVelocity(320, 320);
+        this.player.setDepth(10);
+
+        this.trail = this.add.particles(380, 280, {
+          speed: { min: 2, max: 18 },
+          lifespan: { min: 250, max: 550 },
+          frequency: 55,
+          quantity: 1,
+          size: 5,
+          colors: ['#89b4fa', '#45475a'],
+          follow: this.player,
+          blendMode: 'lighter'
+        });
+        this.trail.setDepth(5);
+
+        this.pickups = this.add.group();
+        this.enemies = this.add.group();
+
+        this.physics.overlapPair(this.player, this.pickups, (player, pickup) =>
+          this.collect(pickup)
+        );
+        this.physics.addCollider(this.player, this.enemies, (player, enemy) =>
+          this.hurt(enemy)
+        );
+
+        this.scoreText = this.add.text(20, 18, 'Score 0', {
+          font: 'bold 20px sans-serif',
           color: '#cdd6f4'
+        }).setDepth(100).setScrollFactor(0);
+        this.livesText = this.add.text(20, 46, 'Lives 3', {
+          font: '16px sans-serif',
+          color: '#f38ba8'
+        }).setDepth(100).setScrollFactor(0);
+        this.timeText = this.add.text(780, 18, '30s', {
+          font: 'bold 20px sans-serif',
+          color: '#a6e3a1'
+        }).setDepth(100).setScrollFactor(0);
+        this.timeText.setOrigin(1, 0);
+
+        this.add.text(780, 48, 'Escape: pause | `: debug', {
+          font: '12px monospace',
+          color: '#6c7086'
+        }).setDepth(100).setOrigin(1, 0).setScrollFactor(0);
+
+        this.pickupTimer = this.time.loop(850, () => this.spawnPickup());
+        this.enemyTimer = this.time.loop(1400, () => this.spawnEnemy());
+        this.clock = this.time.loop(1000, () => this.tickClock());
+
+        this.overlay = this.add.rect(0, 0, 800, 600, 'rgba(17,17,27,0.82)').setDepth(500).setScrollFactor(0);
+        this.overlay.setVisible(false);
+        this.overlayTitle = this.add.text(400, 220, 'Game over', {
+          font: 'bold 54px sans-serif',
+          color: '#f38ba8'
+        }).setDepth(501).setOrigin(0.5, 0.5).setVisible(false).setScrollFactor(0);
+        this.overlayInfo = this.add.text(400, 292, '', {
+          font: '20px sans-serif',
+          color: '#cdd6f4',
+          align: 'center'
+        }).setDepth(501).setOrigin(0.5, 0.5).setVisible(false).setScrollFactor(0);
+        this.restartButton = this.add.button(320, 350, 160, 50, 'RETRY', {
+          color: '#a6e3a1',
+          hoverColor: '#c3f0bf',
+          textColor: '#11111b',
+          fontSize: 18,
+          onClick: () => this.restart()
+        }).setDepth(502).setVisible(false).setScrollFactor(0);
+
+        this._pauseHandler = (event) => {
+          if (event.code === 'Escape' || event.code === 'KeyP') {
+            this.game.togglePause();
+            this._drawPausedHint();
+          }
+        };
+        window.addEventListener('keydown', this._pauseHandler);
+        this._pausedHint = null;
+
+        this.input.capture(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space']);
+
+        // Opening burst.
+        this.add.particles(400, 300, {
+          speed: { min: 120, max: 260 },
+          lifespan: { min: 500, max: 900 },
+          frequency: -1,
+          size: 5,
+          colors: ['#89b4fa', '#cba6f7'],
+          blendMode: 'lighter'
+        }).explode(40);
+        this.cameras[0].flash('#89b4fa', 250);
+      }
+
+      shutdown() {
+        window.removeEventListener('keydown', this._pauseHandler);
+        if (this.game.paused) this.game.resume();
+      }
+
+      _drawPausedHint() {
+        if (this.game.paused && !this.finished) {
+          this._pausedHint = this.add.text(400, 300, 'PAUSED', {
+            font: 'bold 46px sans-serif',
+            color: '#f9e2af'
+          }).setDepth(600).setOrigin(0.5, 0.5).setScrollFactor(0);
+        } else if (this._pausedHint) {
+          this._pausedHint.destroy();
+          this._pausedHint = null;
+        }
+      }
+
+      spawnPickup() {
+        if (this.finished) return;
+        const pickup = this.add.circle(
+          Chroms.Math.randomInt(60, 740),
+          Chroms.Math.randomInt(80, 540),
+          9,
+          '#f9e2af'
+        );
+        pickup.setDepth(8);
+        this.pickups.add(pickup);
+        this.tweens.add({
+          targets: pickup,
+          scaleX: 1.35,
+          scaleY: 1.35,
+          duration: 500,
+          yoyo: true,
+          repeat: -1,
+          ease: 'sine.inOut'
+        });
+        this.time.delayedCall(6000, () => {
+          if (pickup.active) pickup.destroy();
         });
       }
 
+      spawnEnemy() {
+        if (this.finished) return;
+        if (this.enemies.length >= 9) return;
+        const edge = Chroms.Math.randomInt(0, 3);
+        let x = 0;
+        let y = 0;
+        if (edge === 0) { x = Chroms.Math.randomInt(0, 800); y = -30; }
+        if (edge === 1) { x = 830; y = Chroms.Math.randomInt(0, 600); }
+        if (edge === 2) { x = Chroms.Math.randomInt(0, 800); y = 630; }
+        if (edge === 3) { x = -30; y = Chroms.Math.randomInt(0, 600); }
+
+        const enemy = this.add.circle(x, y, 15, '#f38ba8');
+        enemy.setDepth(9);
+        enemy.enablePhysics({ bounce: 1, collideWorldBounds: true });
+        const angle = Math.atan2(this.player.y - y, this.player.x - x);
+        enemy.setVelocity(Math.cos(angle) * 105, Math.sin(angle) * 105);
+        this.enemies.add(enemy);
+
+        this.tweens.add({
+          targets: enemy,
+          angle: 360,
+          duration: 1600,
+          repeat: -1,
+          ease: 'linear'
+        });
+      }
+
+      collect(pickup) {
+        if (this.finished || !pickup.active) return;
+        this.score += 10;
+        const best = this.game.storage.load('best', 0);
+        if (this.score > best) this.game.storage.save('best', this.score);
+        this.scoreText.setText('Score ' + this.score);
+        const burst = this.add.particles(pickup.x + pickup.width / 2, pickup.y + pickup.height / 2, {
+          speed: { min: 60, max: 190 },
+          lifespan: { min: 300, max: 700 },
+          frequency: -1,
+          size: 4,
+          colors: ['#f9e2af', '#fab387'],
+          blendMode: 'lighter'
+        });
+        burst.explode(14);
+        this.time.delayedCall(900, () => burst.destroy());
+        pickup.destroy();
+        this.camera.shake(120, 4);
+        this.camera.flash('rgba(249,226,175,0.14)', 120);
+        this.sound.beep({ frequency: 640, slideTo: 960, duration: 0.09, type: 'triangle', volume: 0.15 });
+        this.tweens.add({
+          targets: this.player,
+          scaleX: 1.2,
+          scaleY: 1.2,
+          duration: 70,
+          yoyo: true
+        });
+      }
+
+      hurt(enemy) {
+        if (this.finished || !enemy.active) return;
+        enemy.destroy();
+        this.lives -= 1;
+        this.livesText.setText('Lives ' + this.lives);
+        this.camera.shake(300, 10);
+        this.camera.flash('rgba(243,139,168,0.28)', 220);
+        this.sound.beep({ frequency: 180, slideTo: 70, duration: 0.2, type: 'sawtooth', volume: 0.14 });
+        const burst = this.add.particles(this.player.x + 18, this.player.y + 18, {
+          speed: { min: 70, max: 220 },
+          lifespan: { min: 250, max: 650 },
+          frequency: -1,
+          size: 5,
+          colors: ['#f38ba8', '#eba0ac'],
+          blendMode: 'lighter'
+        });
+        burst.explode(18);
+        this.time.delayedCall(900, () => burst.destroy());
+        if (this.lives <= 0) this.gameOver('No lives left');
+      }
+
+      tickClock() {
+        if (this.finished) return;
+        this.timeLeft -= 1;
+        this.timeText.setText(this.timeLeft + 's');
+        if (this.timeLeft <= 0) this.gameOver('Time is up');
+      }
+
+      gameOver(reason) {
+        this.finished = true;
+        this.player.setVelocity(0, 0);
+        this.pickupTimer.remove();
+        this.enemyTimer.remove();
+        this.clock.remove();
+        this.overlay.setVisible(true);
+        this.overlayTitle.setVisible(true).setText('Game over');
+        this.overlayInfo
+          .setVisible(true)
+          .setText(reason + '\nScore: ' + this.score + '  •  Best: ' + this.game.storage.load('best', 0));
+        this.restartButton.setVisible(true);
+        this.tweens.add({
+          targets: this.overlayTitle,
+          scaleX: 1.08,
+          scaleY: 1.08,
+          duration: 500,
+          yoyo: true,
+          repeat: -1,
+          ease: 'sine.inOut'
+        });
+        this.sound.beep({ frequency: 320, slideTo: 90, duration: 0.45, type: 'sine', volume: 0.18 });
+      }
+
       update(dt) {
-        const speed = 320;
+        if (this.finished || this.game.paused) return;
         let vx = 0;
         let vy = 0;
-
-        if (this.input.isDown('ArrowLeft') || this.input.isDown('KeyA')) vx = -speed;
-        if (this.input.isDown('ArrowRight') || this.input.isDown('KeyD')) vx = speed;
-        if (this.input.isDown('ArrowUp') || this.input.isDown('KeyW')) vy = -speed;
-        if (this.input.isDown('ArrowDown') || this.input.isDown('KeyS')) vy = speed;
-
+        if (this.input.isDown('ArrowLeft') || this.input.isDown('KeyA')) vx -= 1;
+        if (this.input.isDown('ArrowRight') || this.input.isDown('KeyD')) vx += 1;
+        if (this.input.isDown('ArrowUp') || this.input.isDown('KeyW')) vy -= 1;
+        if (this.input.isDown('ArrowDown') || this.input.isDown('KeyS')) vy += 1;
+        if (vx !== 0 || vy !== 0) {
+          const length = Math.hypot(vx, vy);
+          vx = (vx / length) * 300;
+          vy = (vy / length) * 300;
+        }
         this.player.setVelocity(vx, vy);
 
-        // Проверка столкновения
-        if (this.physics.overlap(this.player, this.target)) {
-          this.score += 10;
-          this.scoreText.setText(`Chroms Score: ${this.score}`);
-          this.target.x = Math.random() * (this.game.width - 40);
-          this.target.y = Math.random() * (this.game.height - 40);
-        }
+        this.enemies.forEach((enemy) => {
+          if (!enemy.body || !enemy.active) return;
+          const dx = this.player.x - enemy.x;
+          const dy = this.player.y - enemy.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          if (distance < 260) {
+            enemy.body.velocity.x += (dx / distance) * 26 * dt;
+            enemy.body.velocity.y += (dy / distance) * 26 * dt;
+            enemy.body.velocity.limit(150);
+          }
+        });
       }
     }
 
-    // Запуск игры на движке Chroms
     const game = new Chroms.Game({
       width: 800,
       height: 600,
-      backgroundColor: '#1e1e2e',
-      scene: [PlayScene]
+      parent: document.body,
+      backgroundColor: '#11111b',
+      scene: [MenuScene, PlayScene],
+      debug: false
     });
+
+    window.game = game;
+    console.log('Chroms v' + Chroms.version, '— try Chroms.describe()');
   </script>
+  <div class="links">
+    <a href="docs/en/index.md">English docs</a>
+    <a href="docs/ru/index.md">Русская документация</a>
+    <a href="examples/showcase.html">Showcase</a>
+    <a href="docs/llms.txt">llms.txt</a>
+  </div>
 </body>
 </html>

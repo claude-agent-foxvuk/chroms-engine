@@ -1,0 +1,305 @@
+{
+  "name": "Chroms",
+  "version": "1.1.0",
+  "runtime": "browser",
+  "global": "window.Chroms",
+  "module": "CommonJS module.exports when loaded in Node",
+  "docs": {
+    "llms": "docs/llms.txt",
+    "english": "docs/en/index.md",
+    "russian": "docs/ru/index.md",
+    "runtimeManifest": "Chroms.describe()"
+  },
+  "units": {
+    "positions": "pixels, top-left origin, y grows down",
+    "velocity": "pixels per second",
+    "gravity": "pixels per second squared",
+    "angles": "degrees for object.angle/setAngle; radians for math helpers",
+    "dt": "seconds",
+    "tweens": "milliseconds",
+    "timers": "milliseconds",
+    "cameraEffects": "milliseconds"
+  },
+  "conventions": [
+    "Classic script; no imports in browser code",
+    "Scene subclasses implement preload/create/update",
+    "Physics is AABB only; rotation/origin/scale do not affect bodies",
+    "Physics steps after scene.update()",
+    "Scene switch destroys scene objects, bodies, scene tweens and scene timers",
+    "HUD objects use setScrollFactor(0)",
+    "assets must be queued in preload"
+  ],
+  "gameConfig": {
+    "width": 800,
+    "height": 600,
+    "parent": "document.body or element id",
+    "backgroundColor": "#181825",
+    "pixelRatio": "min(2, devicePixelRatio)",
+    "scaleMode": "fit | letterbox | stretch | none",
+    "autoResize": true,
+    "antialias": true,
+    "fixedStep": 0.0166666667,
+    "maxDelta": 0.1,
+    "timeScale": 1,
+    "pauseOnHidden": true,
+    "debug": false,
+    "debugKey": "Backquote",
+    "gravity": { "x": 0, "y": 0 },
+    "physics": { "gravity": { "x": 0, "y": 0 }, "enabled": true, "fixedStep": 0.0083333333, "maxSubSteps": 6, "debug": false },
+    "scene": "SceneClass or SceneClass[]",
+    "scenes": "alias of scene",
+    "startScene": "scene key; defaults to first",
+    "plugins": [],
+    "loading": { "text": "Loading...", "barColor": "#89b4fa", "trackColor": "rgba(255,255,255,0.12)", "textColor": "#cdd6f4", "show": true },
+    "storagePrefix": "chroms",
+    "seed": "Date.now()",
+    "autoStart": true
+  },
+  "classes": {
+    "Game": {
+      "constructor": "new Chroms.Game(config)",
+      "properties": [
+        "canvas", "ctx", "width", "height", "scaleMode", "pixelRatio", "parent",
+        "events", "load", "input", "sound", "physics", "anims", "tweens", "time",
+        "storage", "random", "plugins", "scale", "scenes", "sceneOrder", "currentScene",
+        "running", "paused", "elapsed", "delta", "fps", "frameCount", "debug",
+        "loadingStyle", "transition"
+      ],
+      "methods": {
+        "addScene(SceneClass)": "register a scene class or instance",
+        "getScene(key)": "lookup",
+        "removeScene(key)": "remove and clean a scene",
+        "startScene(key, data?, { fade, fadeColor }?)": "switch scenes, optional fade",
+        "stopScene(key?)": "shut down and clean",
+        "pauseScene(key?)": "pause scene",
+        "resumeScene(key?)": "resume scene",
+        "sleepScene(key?)": "sleep scene (stops rendering it)",
+        "wakeScene(key?)": "wake scene",
+        "start()": "start loop",
+        "stop()": "stop loop",
+        "pause()": "pause simulation, keep rendering",
+        "resume()": "resume simulation",
+        "togglePause()": "toggle pause",
+        "setTimeScale(value)": "global speed",
+        "setBackgroundColor(color)": "clear color",
+        "resize()": "recompute canvas and CSS size",
+        "render()": "draw one frame manually",
+        "screenshot(type?)": "canvas data URL",
+        "use(pluginOrName)": "install plugin",
+        "describe()": "machine-readable manifest",
+        "destroy()": "stop and remove canvas"
+      },
+      "events": ["ready", "start", "stop", "pause", "resume", "preupdate", "postupdate", "scene-added", "scene-start", "scene-create", "scene-stop", "scene-load-progress", "load-start", "load-progress", "load-complete", "debug-toggle", "visibility", "resize", "plugin-install", "destroy"]
+    },
+    "Scene": {
+      "constructor": "class S extends Chroms.Scene { constructor(){ super('Key') } } or super({ key, updateChildren })",
+      "properties": ["key", "game", "children", "camera", "cameras", "events", "status", "data", "add", "physics", "input", "load", "sound", "anims", "tweens", "time", "storage", "scale", "loadProgress"],
+      "lifecycle": ["init(data)", "preload()", "create()", "update(dt)", "fixedUpdate(step)", "shutdown()"],
+      "methods": {
+        "start(key, data?, options?)": "switch scene",
+        "restart(data?, options?)": "restart current scene",
+        "stop()": "stop scene",
+        "pause()": "pause scene",
+        "resume()": "resume scene",
+        "sleep()": "sleep scene",
+        "wake()": "wake scene",
+        "getChildren()": "direct children",
+        "find(predicate)": "first matching child",
+        "findByName(name)": "by name",
+        "findByType(type)": "all with type",
+        "getChildrenByType(type)": "alias",
+        "remove(object, destroy?)": "remove a child"
+      },
+      "factories": {
+        "sprite(x, y, w, h, textureOrColor)": "Sprite",
+        "image(x, y, key, { width, height }?)": "Sprite auto-sized from image",
+        "animatedSprite(x, y, w, h, texture)": "Sprite",
+        "rect(x, y, w, h, color, radius?)": "Rect",
+        "circle(x, y, radius, color)": "Circle",
+        "line(x1, y1, x2, y2, color, lineWidth?)": "Line",
+        "text(x, y, text, style)": "Text",
+        "tileSprite(x, y, w, h, texture, options?)": "TileSprite",
+        "container(x, y)": "Container",
+        "group(config?)": "Group",
+        "particles(x, y, config)": "ParticleEmitter",
+        "tilemap(dataOrKey, x?, y?)": "Tilemap",
+        "button(x, y, w, h, label, options?)": "Button",
+        "joystick(x, y, options?)": "Joystick",
+        "existing(object)": "add existing object"
+      },
+      "events": ["update", "postupdate", "prerender", "render", "pause", "resume", "sleep", "wake", "cleanup", "button-click"]
+    },
+    "GameObject": {
+      "properties": ["id", "type", "scene", "game", "x", "y", "width", "height", "originX", "originY", "scaleX", "scaleY", "angle", "alpha", "visible", "active", "destroyed", "depth", "blendMode", "scrollFactorX", "scrollFactorY", "name", "data", "body", "parent", "group", "events", "displayWidth", "displayHeight", "centerX", "centerY", "right", "bottom", "worldX", "worldY"],
+      "methods": [
+        "setPosition(x, y?)", "setX(x)", "setY(y)", "setSize(w, h?)", "setScale(x, y?)",
+        "setOrigin(x, y?)", "setAngle(degrees)", "setRotation(radians)", "setAlpha(a)",
+        "setVisible(bool)", "setActive(bool)", "setDepth(n)", "setBlendMode(mode)",
+        "setScrollFactor(x, y?)", "setName(name)", "setData(key, value)",
+        "setData(object)", "getData(key)", "hasData(key)", "incData(key, amount?)",
+        "addTo(scene)", "enablePhysics(config?)", "disablePhysics()", "setVelocity(vx, vy)",
+        "setVelocityX(vx)", "setVelocityY(vy)", "setAcceleration(x, y)", "setDrag(x, y?)",
+        "setBounce(v)", "setGravityY(g)", "setImmovable(bool?)", "setMaxVelocity(x, y?)",
+        "setCollideWorldBounds(bool?)", "setDraggable(bool, options?)", "getBounds()",
+        "distanceTo(target)", "angleTo(target)", "render(ctx)", "update(dt)", "draw(ctx)",
+        "destroy(fromScene?)"
+      ],
+      "events": ["destroy", "collide", "overlap", "tile-collide", "animationstart", "animationframe", "animationcomplete", "typecomplete"]
+    },
+    "Sprite": {
+      "extends": "GameObject",
+      "properties": ["texture", "frame", "flipX", "flipY"],
+      "methods": ["setTexture(key, frame?)", "setFrame(frame)", "play(key, { ignoreIfPlaying }?)", "stop()", "pause()", "resume()", "isPlaying(key?)", "setFlip(x, y?)"]
+    },
+    "Text": {
+      "extends": "GameObject",
+      "properties": ["text", "style", "font", "color"],
+      "styleKeys": ["font", "fontFamily", "fontSize", "fontWeight", "fontStyle", "color", "align", "baseline", "stroke", "strokeThickness", "shadowColor", "shadowBlur", "shadowOffsetX", "shadowOffsetY", "backgroundColor", "padding", "lineSpacing", "wordWrapWidth", "fixedWidth"],
+      "methods": ["setText(text)", "setStyle(partial)", "setColor(color)", "setFontSize(size)", "setWordWrapWidth(width)", "measure()", "typeText(text, charsPerSecond?)"]
+    },
+    "Rect": {
+      "extends": "GameObject",
+      "properties": ["color", "radius", "strokeColor", "strokeWidth"],
+      "methods": ["setColor(color)", "setRadius(r)", "setStroke(color, width?)"]
+    },
+    "Circle": {
+      "extends": "GameObject",
+      "properties": ["radius", "color", "strokeColor", "strokeWidth"],
+      "methods": ["setRadius(r)", "setColor(color)", "setStroke(color, width?)"]
+    },
+    "Line": {
+      "extends": "GameObject",
+      "properties": ["x1", "y1", "x2", "y2", "color", "lineWidth"],
+      "methods": ["setPoints(x1, y1, x2, y2)"]
+    },
+    "TileSprite": {
+      "extends": "GameObject",
+      "properties": ["texture", "tilePositionX", "tilePositionY", "tileScaleX", "tileScaleY"],
+      "methods": ["setTexture(key)", "setTilePosition(x, y)"]
+    },
+    "Container": {
+      "extends": "GameObject",
+      "properties": ["children"],
+      "methods": ["add(child)", "addMultiple(children)", "remove(child, destroyChild?)", "removeAll(destroyChildren?)", "getChildren()", "getFirst()", "getByName(name)"]
+    },
+    "Group": {
+      "extends": "GameObject",
+      "config": ["classType", "runChildUpdate", "maxSize", "defaults.setup"],
+      "properties": ["children", "length"],
+      "methods": ["create(x, y, w, h, texture?)", "add(child)", "addMultiple(children)", "remove(child, destroyChild?)", "clear(destroyChildren?)", "getChildren()", "getFirst(aliveOnly?)", "getLast(aliveOnly?)", "getRandom(aliveOnly?)", "countActive(value?)", "contains(child)", "forEach(fn)", "filter(fn)", "find(fn)"]
+    },
+    "Button": {
+      "extends": "GameObject",
+      "options": ["color", "hoverColor", "pressColor", "textColor", "disabledColor", "radius", "fontSize", "disabled", "onClick", "onDown", "onUp"],
+      "methods": ["setText(label)", "setEnabled(bool?)"],
+      "events": ["down", "click"]
+    },
+    "Joystick": {
+      "extends": "GameObject",
+      "note": "x, y is the center of the base",
+      "properties": ["value (Vec2)", "magnitude", "angle", "radius", "knobRadius", "onChange"],
+      "options": ["radius", "knobRadius", "baseColor", "knobColor", "onChange"]
+    },
+    "ParticleEmitter": {
+      "extends": "GameObject",
+      "config": ["speed", "angle", "lifespan", "quantity", "frequency", "max", "gravityX", "gravityY", "color", "colors", "alpha", "scale", "size", "shape", "texture", "blendMode", "emitting", "emitZone", "follow", "rotate", "rotateSpeed", "seed", "onParticle"],
+      "methods": ["emitParticleAt(x, y, count?)", "explode(count?, x?, y?)", "start()", "stop()", "isEmitting()", "setFrequency(ms)", "setQuantity(n)", "setSpeed(value)", "setLifespan(value)", "setGravity(y)", "getParticleCount()", "clear()", "destroy()"]
+    },
+    "Body": {
+      "config": ["width", "height", "offsetX", "offsetY", "velocityX", "velocityY", "accelerationX", "accelerationY", "dragX", "dragY", "maxVelocityX", "maxVelocityY", "gravityX", "gravityY", "bounce", "allowGravity", "immovable", "collideWorldBounds", "isSensor", "isCircle", "enabled"],
+      "properties": ["object", "velocity", "acceleration", "drag", "gravity", "bounce", "immovable", "isSensor", "allowGravity", "collideWorldBounds", "enabled", "blocked", "collisionCount", "x", "y", "width", "height", "centerX", "centerY", "right", "bottom", "speed", "onCollide", "onWorldBounds"],
+      "methods": ["setSize(w, h?)", "setOffset(x, y)", "setVelocity(x, y?)", "setVelocityX(x)", "setVelocityY(y)", "addVelocity(x, y?)", "setAcceleration(x, y?)", "setGravityY(y)", "setGravity(x, y?)", "setDrag(x, y?)", "setMaxVelocity(x, y?)", "setBounce(v)", "setImmovable(bool?)", "setCollideWorldBounds(bool?)", "setAllowGravity(bool?)", "setSensor(bool?)", "setCircle(bool?)", "setEnabled(bool?)", "getBounds()", "destroy()"]
+    },
+    "PhysicsWorld": {
+      "properties": ["gravity (Vec2)", "bounds", "bodies", "colliders", "enabled", "fixedStep", "maxSubSteps", "timeScale", "stats", "events"],
+      "methods": ["setGravity(x, y)", "setBounds(x, y, w, h)", "clearBounds()", "clear()", "add(objectOrBody, config?)", "remove(objectOrBody)", "removeScene(scene)", "addCollider(a, b, callback?, { overlapOnly }?)", "collide(a, b, callback?)", "overlapPair(a, b, callback?)", "removeCollider(handleOrCollider)", "collideNow(a, b, callback?)", "overlap(a, b)", "raycast(x1, y1, x2, y2, { targets, includeSensors }?)", "queryRect(x, y, w, h)", "queryPoint(x, y)", "collideTilemap(object, tilemap, callback?)", "addTilemapCollider(object, tilemap, callback?)", "step(dt)"],
+      "events": ["collision", "world-bounds"]
+    },
+    "Camera": {
+      "properties": ["x", "y", "width", "height", "zoom", "bounds", "followTarget", "lerp", "followOffset", "deadzone", "shakeOffset", "fadeAlpha", "fadeColor", "flashAlpha", "flashColor", "backgroundColor", "worldView"],
+      "methods": ["setBounds(x, y, w, h | object)", "clearBounds()", "setSize(w, h)", "resize(w, h)", "setZoom(z)", "zoomTo(z, ms, ease?)", "setBackgroundColor(color)", "follow(target, options?)", "startFollow(target, options?)", "stopFollow()", "setLerp(x, y?)", "setFollowOffset(x, y?)", "setDeadzone(w, h)", "centerOn(x, y)", "scrollTo(x, y)", "shake(durationMs, intensityPx?)", "fadeOut(ms, color?, callback?)", "fadeIn(ms, color?, callback?)", "flash(color, ms?)", "screenToWorld(x, y)", "worldToScreen(x, y)"]
+    },
+    "InputManager": {
+      "properties": ["keys", "pointer", "pointers", "wheelDelta", "enabled", "gamepads", "events"],
+      "methods": ["isDown(code)", "isJustDown(code)", "isJustUp(code)", "isAnyDown(codes)", "areDown(codes)", "addAction(name, codes)", "setKeybinding(name, codes)", "actionDown(name)", "actionJustDown(name)", "actionJustUp(name)", "capture(codes)", "releaseCapture(codes)", "enableDrag(object, options?)", "disableDrag(object)", "gamepad(index?)", "gamepadDown(button, padIndex?)", "gamepadAxis(axis, padIndex?)", "update()", "clearFrameState()", "destroy()"],
+      "pointer": ["x", "y", "worldX", "worldY", "isDown", "justDown", "justUp", "downTime"]
+    },
+    "AssetLoader": {
+      "properties": ["queue", "images", "audios", "json", "texts", "spritesheets", "atlases", "errors", "loaded", "total", "progress", "isLoading"],
+      "methods": ["image(key, url)", "audio(key, url)", "json(key, url)", "text(key, url)", "spritesheet(key, url, fw, fh, { margin, spacing }?)", "atlas(key, imageUrl, dataOrUrl)", "getImage(key)", "getAudio(key)", "getJSON(key, fallback?)", "getText(key, fallback?)", "get(key)", "getFrame(key, frame)", "has(key)", "reset()", "start(onProgress?, onComplete?)"]
+    },
+    "SoundManager": {
+      "properties": ["masterVolume", "musicVolume", "sfxVolume", "muted", "music", "musicKey", "active", "events"],
+      "methods": ["play(key, { volume, rate, loop, channel } | volumeNumber)", "musicPlay(key, { volume, fade }?)", "stopMusic(fadeMs?)", "stop(key)", "stopAll()", "setMasterVolume(v)", "setMusicVolume(v)", "setSfxVolume(v)", "mute(value?)", "toggleMute()", "beep({ frequency, slideTo, duration, type, volume, delay }?)", "unlock()", "update(dt)"]
+    },
+    "TweenManager": {
+      "properties": ["tweens", "timeScale", "paused", "events"],
+      "methods": ["add(config)", "addCounter({ from, to, duration, ease, onUpdate, onComplete })", "chain(configs)", "remove(tween)", "killTweensOf(target)", "pauseAll()", "resumeAll()", "removeAll()", "update(dt)"]
+    },
+    "Tween": {
+      "config": ["targets", "target", "duration", "delay", "ease", "yoyo", "repeat", "hold", "from", "paused", "persist", "onStart", "onUpdate", "onYoyo", "onRepeat", "onComplete", "property values", "{ from, to } values", "dotted property paths"],
+      "methods": ["pause()", "resume()", "stop()", "restart()", "complete()", "isPlaying()", "getProgress()", "setTimeScale(v)"]
+    },
+    "TimerManager": {
+      "properties": ["timers", "timeScale", "paused", "events"],
+      "methods": ["addEvent(config)", "delayedCall(ms, callback, args?)", "loop(ms, callback, args?)", "remove(timer)", "clear()", "removeAll()", "removeByName(name)", "pauseAll()", "resumeAll()", "update(dt)"]
+    },
+    "Timer": {
+      "config": ["delay", "loop", "repeat", "startAt", "callback", "args", "name"],
+      "methods": ["remove()", "pause()", "resume()", "reset(delay?)", "getProgress()", "getRemaining()", "isRunning()"],
+      "events": ["complete"]
+    },
+    "AnimationManager": {
+      "properties": ["anims", "events"],
+      "methods": ["create({ key, frames | spritesheet+start/end, frameRate, repeat, yoyo, onComplete, onFrame })", "exists(key)", "get(key)", "getAll()", "remove(key)", "play(sprite, key, options?)", "stop(sprite)"],
+      "events": ["create", "start", "stop"]
+    },
+    "Tilemap": {
+      "extends": "GameObject",
+      "dataFormat": {
+        "tileWidth": "number",
+        "tileHeight": "number",
+        "width": "tiles",
+        "height": "tiles",
+        "tileset": "{ key, firstgid, columns } | null",
+        "tiles": "color fallback array",
+        "layers": "[{ name, data: gid[], visible, opacity, solid, collides: gid[] | fn, offsetX, offsetY }]"
+      },
+      "properties": ["tileWidth", "tileHeight", "mapWidth", "mapHeight", "tileset", "tiles", "layers", "events"],
+      "methods": ["getLayer(name?)", "getTileAt(layer, tileX, tileY)", "setTileAt(layer, tileX, tileY, gid)", "getTileAtWorld(x, y, layer?)", "setTileAtWorld(x, y, gid, layer?)", "tileToWorld(tileX, tileY)", "worldToTile(x, y)", "setLayerVisible(name, visible)", "setLayerCollision(name, solid?)", "isSolid(layer, gid)", "getSolidTilesInRect(x, y, w, h)", "collidesRect(x, y, w, h)"]
+    },
+    "SaveManager": {
+      "properties": ["prefix", "available"],
+      "methods": ["save(key, value)", "load(key, fallback?)", "has(key)", "remove(key)", "clear()", "keys()"]
+    },
+    "Random": {
+      "constructor": "new Chroms.Random(seed?)",
+      "methods": ["reset(seed?)", "next()", "float(min, max)", "int(min, max)", "bool(chance?)", "pick(array)", "shuffle(array)", "angle()"]
+    },
+    "Vec2": {
+      "constructor": "new Chroms.Vec2(x?, y?)",
+      "properties": ["x", "y"],
+      "methods": ["set(x, y)", "copy(v)", "clone()", "add(v)", "subtract(v)", "scale(s)", "dot(v)", "length()", "lengthSq()", "normalize()", "limit(max)", "angle()", "rotate(radians)", "distanceTo(v)", "Vec2.fromAngle(radians, length?)"]
+    },
+    "EventEmitter": {
+      "methods": ["on(event, handler, context?)", "once(event, handler, context?)", "off(event, handler?, context?)", "emit(event, ...args)", "listenerCount(event)", "removeAllListeners(event?)"]
+    }
+  },
+  "mathHelpers": ["clamp", "clamp01", "lerp", "inverseLerp", "map", "smoothstep", "sign", "wrap", "snap", "degToRad", "radToDeg", "angleBetween", "distanceBetween", "distanceSq", "rotate", "randomInt", "randomFloat", "pick", "shuffle"],
+  "easings": ["linear", "sine.in", "sine.out", "sine.inOut", "quad.in", "quad.out", "quad.inOut", "cubic.in", "cubic.out", "cubic.inOut", "quart.in", "quart.out", "quart.inOut", "quint.in", "quint.out", "quint.inOut", "expo.in", "expo.out", "expo.inOut", "circ.in", "circ.out", "circ.inOut", "back.in", "back.out", "back.inOut", "elastic.in", "elastic.out", "elastic.inOut", "bounce.in", "bounce.out", "bounce.inOut"],
+  "plugins": {
+    "register": "Chroms.registerPlugin(name, installer)",
+    "install": "game.use(name | function | { install })"
+  },
+  "ai": {
+    "manifest": "Chroms.describe()",
+    "readFirst": ["docs/llms.txt", "docs/api.json"],
+    "rules": [
+      "Use shapes when assets are unavailable",
+      "Queue assets only in preload",
+      "Register colliders once in create",
+      "Use setScrollFactor(0) for HUD",
+      "Validate with node --check chroms.js and node test/smoke.js"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "chroms",
+  "version": "1.1.0",
+  "description": "Chroms 2D browser game engine for humans and AI agents",
+  "main": "chroms.js",
+  "scripts": {
+    "build": "node build.js",
+    "check": "node --check chroms.js",
+    "test": "node test/smoke.js"
+  },
+  "keywords": ["game-engine", "canvas", "2d", "javascript"],
+  "license": "UNLICENSED",
+  "private": true
+}

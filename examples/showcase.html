@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chroms v1.1 — Showcase</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; min-height: 100vh; background: #11111b; color: #a6adc8;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; font-family: system-ui, sans-serif;
+    }
+    .chroms-canvas { border: 2px solid #313244; border-radius: 10px; }
+    a { color: #89b4fa; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <script src="../chroms.js"></script>
+  <script>
+    function backButton(scene) {
+      return scene.add.button(16, 16, 92, 34, '< Menu', {
+        color: '#313244',
+        hoverColor: '#45475a',
+        textColor: '#cdd6f4',
+        fontSize: 15,
+        radius: 6,
+        onClick: () => scene.start('ShowcaseMenu', {}, { fade: 200 })
+      }).setDepth(1000).setScrollFactor(0);
+    }
+
+    function winOverlay(scene, title, subtitle) {
+      scene.add.rect(0, 0, 800, 600, 'rgba(17,17,27,0.84)')
+        .setDepth(2000).setScrollFactor(0);
+      scene.add.text(400, 210, title, {
+        font: 'bold 46px sans-serif', color: '#a6e3a1'
+      }).setOrigin(0.5, 0.5).setDepth(2001).setScrollFactor(0);
+      scene.add.text(400, 270, subtitle, {
+        font: '18px sans-serif', color: '#cdd6f4', align: 'center'
+      }).setOrigin(0.5, 0.5).setDepth(2001).setScrollFactor(0);
+      scene.add.button(250, 340, 140, 46, 'PLAY AGAIN', {
+        color: '#a6e3a1', hoverColor: '#c3f0bf', textColor: '#11111b',
+        fontSize: 16, radius: 8,
+        onClick: () => scene.restart()
+      }).setDepth(2002).setScrollFactor(0);
+      scene.add.button(410, 340, 140, 46, 'MENU', {
+        color: '#313244', hoverColor: '#45475a', textColor: '#cdd6f4',
+        fontSize: 16, radius: 8,
+        onClick: () => scene.start('ShowcaseMenu', {}, { fade: 200 })
+      }).setDepth(2002).setScrollFactor(0);
+      scene.camera.flash('rgba(166,227,161,0.25)', 300);
+      scene.sound.beep({ frequency: 520, slideTo: 1040, duration: 0.25, type: 'triangle', volume: 0.16 });
+    }
+
+    class ShowcaseMenu extends Chroms.Scene {
+      constructor() { super('ShowcaseMenu'); }
+      create() {
+        this.physics.setGravity(0, 0);
+        this.add.rect(0, 0, 800, 600, '#1e1e2e');
+        this.add.text(400, 100, 'Chroms v1.1 mini-games', {
+          font: 'bold 40px sans-serif', color: '#89b4fa'
+        }).setOrigin(0.5, 0.5);
+        this.add.text(400, 150, 'Three small playable scenes. Each has a goal and a restart.', {
+          font: '16px sans-serif', color: '#a6adc8'
+        }).setOrigin(0.5, 0.5);
+        const items = [
+          ['Physics platformer', 'PhysicsPlatformer'],
+          ['Particles & tweens', 'ParticleScene'],
+          ['Tilemap & camera', 'TilemapScene']
+        ];
+        items.forEach((item, index) => {
+          this.add.button(250, 230 + index * 90, 300, 60, item[0], {
+            color: '#313244', hoverColor: '#45475a', textColor: '#cdd6f4',
+            radius: 8, fontSize: 18,
+            onClick: () => this.start(item[1], {}, { fade: 250 })
+          });
+        });
+        this.add.text(400, 560, 'Press ` to toggle the debug overlay', {
+          font: '12px monospace', color: '#585b70'
+        }).setOrigin(0.5, 0.5);
+      }
+    }
+
+    class PhysicsPlatformer extends Chroms.Scene {
+      constructor() { super('PhysicsPlatformer'); }
+      create() {
+        this.add.rect(0, 0, 800, 600, '#181825');
+        this.physics.setGravity(0, 1200);
+        this.physics.setBounds(0, 0, 1600, 600);
+        this.finished = false;
+        this.input.capture(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space']);
+        backButton(this);
+        this.add.text(400, 28, 'Collect all 6 coins. WASD / arrows, Space to jump.', {
+          font: '14px sans-serif', color: '#6c7086'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+
+        this.player = this.add.rect(100, 380, 32, 44, '#89b4fa', 7);
+        this.player.enablePhysics({ collideWorldBounds: false }).setMaxVelocity(220, 900);
+        this.player.setDepth(10);
+
+        this.platforms = this.add.group();
+        const platforms = [
+          [0, 540, 1600, 60], [260, 440, 180, 24], [520, 360, 180, 24],
+          [800, 280, 160, 24], [1060, 440, 240, 24], [1360, 330, 180, 24]
+        ];
+        platforms.forEach((p) => {
+          const platform = this.add.rect(p[0], p[1], p[2], p[3], '#45475a', 4);
+          platform.enablePhysics({ immovable: true });
+          this.platforms.add(platform);
+        });
+        this.physics.addCollider(this.player, this.platforms);
+
+        this.totalCoins = 6;
+        this.coins = this.add.group();
+        [[300, 430], [560, 330], [840, 250], [1100, 410], [1400, 300], [1200, 410]].forEach(([x, y]) => {
+          const coin = this.add.circle(x, y, 10, '#f9e2af');
+          this.coins.add(coin);
+          this.tweens.add({
+            targets: coin, y: y - 8, duration: 800, yoyo: true, repeat: -1, ease: 'sine.inOut'
+          });
+        });
+        this.score = 0;
+        this.scoreText = this.add.text(24, 74, 'Coins 0 / 6', {
+          font: 'bold 18px sans-serif', color: '#f9e2af'
+        }).setDepth(100).setScrollFactor(0);
+        this.physics.overlapPair(this.player, this.coins, (player, coin) => {
+          if (this.finished || !coin.active) return;
+          coin.destroy();
+          this.score += 1;
+          this.scoreText.setText('Coins ' + this.score + ' / ' + this.totalCoins);
+          this.sound.beep({ frequency: 500 + this.score * 80, duration: 0.07, volume: 0.12 });
+          this.camera.flash('rgba(249,226,175,0.12)', 120);
+          this.camera.shake(100, 3);
+          if (this.score === this.totalCoins) this.win();
+        });
+
+        this.camera.setBounds(0, 0, 1600, 600);
+        this.camera.follow(this.player, { lerpX: 0.12, lerpY: 0.12, offsetY: 60 });
+        this.add.text(24, 100, 'Camera follows with lerp + bounds', {
+          font: '12px monospace', color: '#585b70'
+        }).setDepth(100).setScrollFactor(0);
+      }
+      win() {
+        this.finished = true;
+        this.player.setVelocity(0, 0);
+        winOverlay(this, 'All coins collected!', 'You reached the end of the platforming demo.');
+      }
+      shutdown() {
+        this.input.releaseCapture(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space']);
+      }
+      update() {
+        if (!this.player.body) return;
+        if (this.finished) {
+          this.player.setVelocityX(0);
+          return;
+        }
+        const speed = 220;
+        let vx = 0;
+        if (this.input.isDown('ArrowLeft') || this.input.isDown('KeyA')) vx -= speed;
+        if (this.input.isDown('ArrowRight') || this.input.isDown('KeyD')) vx += speed;
+        this.player.setVelocityX(vx);
+        if ((this.input.isDown('Space') || this.input.isDown('ArrowUp') || this.input.isDown('KeyW')) && this.player.body.blocked.down) {
+          this.player.setVelocityY(-480);
+        }
+        if (this.player.y > 620) {
+          this.player.x = 100;
+          this.player.y = 380;
+          this.player.setVelocity(0, 0);
+        }
+      }
+    }
+
+    class ParticleScene extends Chroms.Scene {
+      constructor() { super('ParticleScene'); }
+      create() {
+        this.add.rect(0, 0, 800, 600, '#11111b');
+        this.physics.setGravity(0, 0);
+        backButton(this);
+        this.add.text(400, 26, 'Move the pointer for the fountain • click for a burst • drag the orb', {
+          font: '14px sans-serif', color: '#6c7086'
+        }).setOrigin(0.5, 0).setScrollFactor(0);
+        this.bursts = 0;
+
+        this.fountain = this.add.particles(400, 380, {
+          follow: this.input.pointer,
+          speed: { min: 40, max: 180 },
+          angle: { min: 210, max: 330 },
+          lifespan: { min: 900, max: 1800 },
+          frequency: 25,
+          quantity: 2,
+          size: 4,
+          gravityY: 180,
+          colors: ['#89b4fa', '#cba6f7', '#f5c2e7', '#89dceb'],
+          blendMode: 'lighter'
+        });
+        this.add.particles(400, 300, {
+          speed: { min: 10, max: 60 },
+          lifespan: { min: 1200, max: 2400 },
+          frequency: 90,
+          size: 3,
+          colors: ['#a6e3a1', '#94e2d5'],
+          gravityY: -15,
+          emitZone: { type: 'circle', radius: 160 },
+          blendMode: 'lighter'
+        }).setDepth(-1);
+
+        this.orb = this.add.circle(370, 260, 30, '#cba6f7');
+        this.orb.setDepth(10);
+        this.orb.enablePhysics({ bounce: 1, collideWorldBounds: true });
+        this.physics.setBounds(0, 0, 800, 600);
+        this.orb.setVelocity(180, 140);
+        this.orb.setDraggable(true);
+        this.tweens.add({
+          targets: this.orb, scaleX: 1.25, scaleY: 1.25,
+          duration: 700, yoyo: true, repeat: -1, ease: 'sine.inOut'
+        });
+
+        this.add.text(24, 74, 'Particles: ' + this.fountain.getParticleCount(), {
+          font: '12px monospace', color: '#a6adc8'
+        }).setName('counter').setDepth(100).setScrollFactor(0);
+        this.burstText = this.add.text(24, 96, 'Bursts 0', {
+          font: '12px monospace', color: '#f5c2e7'
+        }).setDepth(100).setScrollFactor(0);
+        this.add.button(640, 16, 144, 34, 'Toggle fountain', {
+          color: '#313244', hoverColor: '#45475a', textColor: '#cdd6f4', fontSize: 13,
+          onClick: (button) => {
+            if (this.fountain.isEmitting()) {
+              this.fountain.stop();
+              button.setText('Start fountain');
+            } else {
+              this.fountain.start();
+              button.setText('Stop fountain');
+            }
+          }
+        }).setDepth(1000).setScrollFactor(0);
+
+        this.time.loop(300, () => {
+          const label = this.findByName('counter');
+          if (label) label.setText('Particles: ' + this.fountain.getParticleCount());
+        });
+      }
+      update() {
+        if (!this.input.pointer.justDown) return;
+        const x = this.input.pointer.worldX;
+        const y = this.input.pointer.worldY;
+        const burst = this.add.particles(x, y, {
+          speed: { min: 90, max: 280 },
+          lifespan: { min: 300, max: 800 },
+          frequency: -1,
+          size: 5,
+          colors: ['#f5c2e7', '#cba6f7', '#89dceb'],
+          gravityY: 120,
+          blendMode: 'lighter'
+        });
+        burst.explode(28);
+        this.time.delayedCall(1100, () => burst.destroy());
+        this.bursts += 1;
+        this.burstText.setText('Bursts ' + this.bursts);
+        this.camera.shake(120, 3);
+        this.sound.beep({ frequency: 320 + (this.bursts % 6) * 90, duration: 0.08, volume: 0.1 });
+      }
+    }
+
+    class TilemapScene extends Chroms.Scene {
+      constructor() { super('TilemapScene'); }
+      create() {
+        const width = 40;
+        const height = 20;
+        const data = new Array(width * height).fill(0);
+        for (let x = 0; x < width; x += 1) {
+          data[x] = 2;
+          data[(height - 1) * width + x] = 2;
+        }
+        for (let y = 0; y < height; y += 1) {
+          data[y * width] = 2;
+          data[y * width + width - 1] = 2;
+        }
+        const blocks = [[6, 15], [7, 15], [8, 15], [14, 12], [15, 12], [16, 12], [22, 9], [23, 9], [28, 14], [29, 14], [30, 14]];
+        blocks.forEach(([x, y]) => { data[y * width + x] = 2; });
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            if (data[y * width + x] === 0 && (x + y) % 7 === 0) data[y * width + x] = 1;
+          }
+        }
+
+        this.add.rect(0, 0, 800, 600, '#11111b');
+        this.finished = false;
+        this.input.capture(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space']);
+        this.map = this.add.tilemap({
+          tileWidth: 32,
+          tileHeight: 32,
+          width,
+          height,
+          tiles: ['#181825', '#313244', '#585b70'],
+          layers: [{ name: 'world', data, solid: true, collides: [2] }]
+        });
+        backButton(this);
+
+        this.player = this.add.circle(80, 80, 13, '#89b4fa');
+        this.player.enablePhysics({ collideWorldBounds: false }).setMaxVelocity(180, 700);
+        this.physics.setGravity(0, 1000);
+        this.physics.setBounds(0, 0, width * 32, height * 32);
+        this.camera.setBounds(0, 0, width * 32, height * 32);
+        this.camera.follow(this.player, { lerpX: 0.14, lerpY: 0.14 });
+        this.camera.setZoom(1.15);
+
+        this.totalGems = 5;
+        this.score = 0;
+        this.gems = this.add.group();
+        [[240, 450], [496, 360], [944, 420], [1100, 520], [640, 540]].forEach(([x, y]) => {
+          const gem = this.add.circle(x, y, 8, '#cba6f7');
+          gem.setDepth(5);
+          this.gems.add(gem);
+          this.tweens.add({
+            targets: gem, y: y - 6, duration: 650, yoyo: true, repeat: -1, ease: 'sine.inOut'
+          });
+        });
+        this.scoreText = this.add.text(120, 16, 'Gems 0 / 5', {
+          font: 'bold 15px sans-serif', color: '#cba6f7'
+        }).setDepth(1000).setScrollFactor(0);
+        this.physics.overlapPair(this.player, this.gems, (player, gem) => {
+          if (this.finished || !gem.active) return;
+          gem.destroy();
+          this.score += 1;
+          this.scoreText.setText('Gems ' + this.score + ' / ' + this.totalGems);
+          this.sound.beep({ frequency: 420 + this.score * 110, duration: 0.08, volume: 0.12 });
+          this.camera.shake(90, 3);
+          if (this.score === this.totalGems) this.win();
+        });
+
+        this.add.text(120, 40, 'map ' + width + '×' + height + ' tiles • arrows / Space', {
+          font: '11px monospace', color: '#585b70'
+        }).setDepth(1000).setScrollFactor(0);
+      }
+      win() {
+        this.finished = true;
+        this.player.setVelocity(0, 0);
+        winOverlay(this, 'All gems collected!', 'Tilemap collision, camera follow and a 1.15× zoom.');
+      }
+      shutdown() {
+        this.camera.setZoom(1);
+        this.input.releaseCapture(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space']);
+      }
+      update() {
+        if (!this.player.body) return;
+        if (this.finished) {
+          this.player.setVelocityX(0);
+          return;
+        }
+        let vx = 0;
+        if (this.input.isDown('ArrowLeft') || this.input.isDown('KeyA')) vx = -150;
+        if (this.input.isDown('ArrowRight') || this.input.isDown('KeyD')) vx = 150;
+        this.player.setVelocityX(vx);
+        if ((this.input.isDown('Space') || this.input.isDown('ArrowUp') || this.input.isDown('KeyW')) && this.player.body.blocked.down) {
+          this.player.setVelocityY(-560);
+        }
+        this.physics.collideTilemap(this.player, this.map);
+      }
+    }
+
+    const game = new Chroms.Game({
+      width: 800,
+      height: 600,
+      parent: document.body,
+      backgroundColor: '#11111b',
+      scene: [ShowcaseMenu, PhysicsPlatformer, ParticleScene, TilemapScene],
+      debug: false,
+      gravity: { x: 0, y: 0 }
+    });
+    window.game = game;
+  </script>
+  <a href="../index.html">Back to the arena demo</a>
+</body>
+</html>

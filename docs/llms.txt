@@ -1,0 +1,282 @@
+# Chroms Engine v1.1 — LLM quick reference
+
+Chroms is a dependency-free Canvas 2D game engine for browsers. Single file: chroms.js.
+Global: window.Chroms. Classic script: no imports, no JSX, no TypeScript, no bundler.
+Docs: docs/en/index.md (English, primary), docs/ru/index.md (Russian).
+API manifest: docs/api.json. Runtime manifest: Chroms.describe().
+
+## Minimal working game
+
+<script src="chroms.js"></script>
+<script>
+class MainScene extends Chroms.Scene {
+  constructor() { super('MainScene'); }
+  preload() { /* this.load.image('hero', 'hero.png'); */ }
+  create() {
+    this.player = this.add.rect(380, 280, 36, 36, '#89b4fa', 8);
+    this.player.enablePhysics({ collideWorldBounds: true });
+    this.score = 0;
+    this.hud = this.add.text(16, 16, 'Score 0', { fontSize: 20, color: '#cdd6f4' })
+      .setScrollFactor(0);
+    this.coins = this.add.group();
+    for (let i = 0; i < 4; i++) {
+      this.coins.create(Chroms.Math.randomInt(40, 740), Chroms.Math.randomInt(60, 540), 16, 16, '#f9e2af');
+    }
+    this.physics.overlapPair(this.player, this.coins, (player, coin) => {
+      coin.destroy(); this.score += 10; this.hud.setText('Score ' + this.score);
+      this.camera.shake(100, 3);
+    });
+  }
+  update() {
+    let x = 0, y = 0;
+    if (this.input.isDown('KeyA') || this.input.isDown('ArrowLeft')) x -= 1;
+    if (this.input.isDown('KeyD') || this.input.isDown('ArrowRight')) x += 1;
+    if (this.input.isDown('KeyW') || this.input.isDown('ArrowUp')) y -= 1;
+    if (this.input.isDown('KeyS') || this.input.isDown('ArrowDown')) y += 1;
+    if (x || y) { const l = Math.hypot(x, y); x = x / l * 280; y = y / l * 280; }
+    this.player.setVelocity(x, y);
+  }
+}
+new Chroms.Game({ width: 800, height: 600, backgroundColor: '#181825', scene: [MainScene] });
+</script>
+
+## Hard rules
+
+- Positions/sizes: pixels, top-left origin, y grows down.
+- object.angle is degrees; Chroms.Math trig helpers use radians.
+- Tween/timer/camera-effect durations: milliseconds. update(dt): seconds.
+- Physics is AABB. Rotation, origin and scale do not affect the body. isCircle is cosmetic.
+- Physics steps after scene.update(). Collision callbacks and body.blocked appear after the step.
+- Register persistent colliders once in create(): physics.addCollider / collide / overlapPair.
+- physics.collide separates; physics.overlapPair only reports; physics.overlap(a,b) is a boolean one-shot.
+- Scene start/restart destroys scene objects, bodies, scene tweens and scene timers.
+- scene.tweens / scene.time are scene-scoped. game.tweens / game.time are global.
+- Text origin defaults to top-left; setOrigin(0.5) centers. HUD requires setScrollFactor(0).
+- justDown/justUp are only trustworthy inside update()/object update().
+- Assets must be queued in preload(). load.json and load.text need HTTP (fetch).
+- Default scene list starts the first scene automatically.
+
+## Lifecycle
+
+class S extends Chroms.Scene {
+  constructor() { super('S'); }        // or super({ key: 'S', updateChildren: false })
+  init(data) {}
+  preload() {}                          // queue assets only
+  create() {}                           // after assets load
+  update(dt) {}
+  fixedUpdate(step) {}                  // deterministic steps before update
+  shutdown() {}
+}
+
+## Object factory (scene.add.*)
+
+sprite(x, y, w, h, textureOrColor)
+image(x, y, key, { width, height })
+animatedSprite(x, y, w, h, texture)     // plain sprite, call play()
+rect(x, y, w, h, color, radius?)
+circle(x, y, radius, color)             // x,y = top-left of bounding box
+line(x1, y1, x2, y2, color, lineWidth?)
+text(x, y, string, style)
+tileSprite(x, y, w, h, texture, options?)
+container(x, y)
+group({ runChildUpdate, maxSize, classType, defaults })
+particles(x, y, config)
+tilemap(dataOrJsonKey, x?, y?)
+button(x, y, w, h, label, { onClick, ... })
+joystick(x, y, { radius, onChange })
+existing(object)
+
+## Text style
+
+font (raw CSS), fontFamily, fontSize, fontWeight, fontStyle, color, align ('left'|'center'|'right'),
+baseline ('top'), stroke, strokeThickness, shadowColor, shadowBlur, shadowOffsetX/Y,
+backgroundColor, padding, lineSpacing, wordWrapWidth, fixedWidth.
+
+text.setText(s), setStyle(partial), setColor(c), setFontSize(n), setWordWrapWidth(n),
+typeText(s, charsPerSecond), measure(), setOrigin(x,y?).
+
+## Game object
+
+x, y, width, height, originX/Y (0), scaleX/Y, angle (deg), alpha, visible, active, depth,
+blendMode, scrollFactorX/Y, body, name, data, events.
+setPosition, setX, setY, setSize, setScale, setOrigin, setAngle, setRotation, setAlpha,
+setVisible, setActive, setDepth, setBlendMode, setScrollFactor, setName, setData, getData,
+incData, addTo, enablePhysics, disablePhysics, setVelocity, setVelocityX/Y, setAcceleration,
+setDrag, setBounce, setGravityY, setImmovable, setMaxVelocity, setCollideWorldBounds,
+setDraggable, getBounds, distanceTo, angleTo, destroy.
+Events: destroy, collide, overlap, tile-collide, animationstart/frame/complete, typecomplete.
+
+## Physics
+
+object.enablePhysics({ width, height, offsetX, offsetY, velocityX/Y, accelerationX/Y,
+dragX/Y, maxVelocityX/Y, gravityX/Y, bounce, allowGravity, immovable, collideWorldBounds,
+isSensor, isCircle, enabled }) -> Body
+
+Body: velocity (Vec2), acceleration, drag, gravity, bounce, immovable, isSensor,
+collideWorldBounds, blocked {up,down,left,right}, onCollide(other, self), onWorldBounds.
+Methods: setSize, setOffset, setVelocity, setVelocityX/Y, setAcceleration, setGravityY,
+setDrag, setMaxVelocity, setBounce, setImmovable, setCollideWorldBounds, setSensor,
+setEnabled, getBounds, destroy.
+
+World: scene.physics = game.physics (shared).
+setGravity(x,y), setBounds(x,y,w,h), clearBounds(), add(body, config), remove(bodyOrObject),
+addCollider(a,b,cb?,{overlapOnly}), collide(a,b,cb?), overlapPair(a,b,cb?),
+removeCollider(handle), collideNow(a,b,cb?), overlap(a,b) -> bool,
+raycast(x1,y1,x2,y2,{targets,includeSensors}) -> {object,body,x,y,distance,normalX,normalY}|null,
+queryRect(x,y,w,h) -> Body[], queryPoint(x,y) -> Body[],
+collideTilemap(object,map,cb?), addTilemapCollider(object,map,cb?).
+a/b accept object, Body, Group, array, or plain {x,y,width,height} for queries.
+Callbacks: (objectA, objectB). Events: world 'collision','world-bounds'; object 'collide','overlap'.
+
+## Input
+
+input.isDown(code), isJustDown, isJustUp, isAnyDown(codes), areDown(codes).
+input.addAction(name, codes), setKeybinding, actionDown, actionJustDown, actionJustUp.
+input.capture(codes), releaseCapture(codes).
+input.pointer { x, y, worldX, worldY, isDown, justDown, justUp, downTime }.
+input.pointers Map, input.wheelDelta.
+input.enableDrag(object, { dragX, dragY, onDragStart, onDrag, onDragEnd }),
+disableDrag(object). object.setDraggable(bool, opts).
+input.gamepad(i), gamepadDown(button, padIndex?), gamepadAxis(axis, padIndex?).
+Codes are KeyboardEvent.code: KeyA, Digit1, ArrowLeft, Space, Escape, ShiftLeft, F1.
+
+## Tweens
+
+scene.tweens.add({
+  targets: obj | [objs], x, y, alpha, scaleX, scaleY, angle, width, height,
+  'body.velocity.x': -300,              // dotted paths
+  prop: { from, to }, from: { x: 0 },
+  duration: 600,                        // ms, default 1000
+  delay: 0, ease: 'quad.out',
+  yoyo: false, repeat: 0,               // -1 = forever
+  hold: 0, paused: false, persist: false,
+  onStart(tween), onUpdate(tween, eased), onYoyo(tween), onRepeat(tween, count), onComplete(tween)
+})
+Eases: linear, sine/quad/cubic/quart/quint/expo/circ/back/elastic/bounce . in|out|inOut.
+Handles: pause, resume, stop, restart, complete, isPlaying, getProgress, setTimeScale.
+Manager: addCounter({from,to,duration,onUpdate}), chain([configs]), killTweensOf(target),
+pauseAll, resumeAll, removeAll, timeScale.
+
+## Timers
+
+scene.time.delayedCall(ms, fn, args?)
+scene.time.addEvent({ delay, loop, repeat, startAt, callback, args, name })
+scene.time.loop(ms, fn, args?)
+Handle: remove, pause, resume, reset(delay?), getProgress, getRemaining, isRunning.
+Manager: remove(timer), clear/removeAll, removeByName, pauseAll, resumeAll, timeScale, paused.
+
+## Particles
+
+scene.add.particles(x, y, {
+  speed: {min,max}, angle: {min,max} (deg), lifespan: {min,max} (ms),
+  quantity, frequency (ms; -1 = no auto emit), max, gravityX, gravityY,
+  color, colors: [..], alpha: {start,end}, scale: {start,end}, size, shape: 'circle'|'square',
+  texture, blendMode, emitting, rotate, rotateSpeed, seed, follow,
+  emitZone: {type:'rect',x,y,width,height} | {type:'circle',radius},
+  onParticle(p)
+})
+Emitter: explode(count,x?,y?), emitParticleAt(x,y,count?), start, stop, isEmitting,
+setFrequency, setQuantity, setSpeed, setLifespan, setGravity, getParticleCount, clear, destroy.
+
+## Camera
+
+scene.camera (scene.cameras[0]).
+follow(target, { lerpX, lerpY, lerp, offsetX, offsetY, deadzoneWidth, deadzoneHeight }),
+startFollow, stopFollow, setLerp, setFollowOffset, setDeadzone, centerOn, scrollTo,
+setBounds(x,y,w,h|{x,y,width,height}), clearBounds, setZoom, zoomTo(zoom,ms,ease?),
+shake(durationMs, intensityPx), fadeOut(ms,color?,cb?), fadeIn(ms,color?,cb?),
+flash(color,ms), screenToWorld(x,y), worldToScreen(x,y), worldView {x,y,width,height},
+setSize/resize, setBackgroundColor, setZoom, backgroundColor.
+HUD: setScrollFactor(0) on objects. One camera; no rotation; uniform zoom.
+
+## Assets
+
+preload() {
+  this.load.image(key,url); this.load.audio(key,url); this.load.json(key,url);
+  this.load.text(key,url); this.load.spritesheet(key,url,fw,fh,{margin,spacing});
+  this.load.atlas(key,imageUrl,jsonUrlOrObject);
+}
+loader.getImage/getAudio/getJSON(key,fallback?)/getText/get/getFrame(key,frame)/has/reset.
+loader.progress/loaded/total/errors/isLoading. start(onProgress,onDone) or start(onDone).
+Events: game load-start/load-progress/load-complete, scene-load-progress.
+JSON/text/atlas URLs need HTTP; images/audio work on file://.
+
+## Animations
+
+scene.anims.create({ key, spritesheet?, frames: [indices] | {start,end}, frameRate, repeat, yoyo }).
+sprite.play(key, { ignoreIfPlaying }), stop, pause, resume, isPlaying.
+sprite.setTexture(key, frame?), setFrame(frame), setFlip(x,y?).
+
+## Audio
+
+sound.play(key, { volume, rate, loop, channel }) -> handle | null (numeric volume also accepted).
+handle: stop, setVolume, setRate.
+sound.musicPlay(key, { volume, fade }), stopMusic(fade), stop(key), stopAll().
+sound.setMasterVolume, setMusicVolume, setSfxVolume, mute(bool), toggleMute.
+sound.beep({ frequency, slideTo, duration (seconds), type, volume, delay }).
+sound.unlock(). Audio needs a user gesture.
+
+## Storage
+
+game.storage.save(key, value), load(key, fallback?), has(key), remove(key), keys(), clear().
+Namespaced localStorage; memory fallback; game.storage.available.
+Game config storagePrefix.
+
+## Scene / Game control
+
+scene.start(key, data?, { fade, fadeColor }), restart(), stop(), pause(), resume(), sleep(), wake().
+game.startScene(key, data?, options), stopScene(key?), pauseScene, resumeScene,
+sleepScene, wakeScene, pause/resume/togglePause, setTimeScale, screenshot, use(plugin),
+describe(), destroy().
+Game events: ready, start, stop, pause, resume, preupdate, postupdate, scene-added,
+scene-start, scene-create, scene-stop, scene-load-progress, load-start/progress/complete,
+debug-toggle, visibility, resize, plugin-install, destroy.
+
+## Groups / containers
+
+Group: create(x,y,w,h,texture), add, addMultiple, remove(child,destroy?), clear(destroy?),
+getChildren, getFirst(aliveOnly?), getLast, getRandom, countActive, contains, forEach, filter,
+find, length. Children are world-space and removed from scene.children.
+Container: add, addMultiple, remove(child,destroy?), removeAll(destroy?), getChildren,
+getFirst, getByName, length. Children are local; inherit transform; no physics.
+
+## Tilemaps
+
+scene.add.tilemap({ tileWidth, tileHeight, width, height,
+  tileset: { key, firstgid, columns } | null,
+  tiles: ['#color', ...],
+  layers: [{ name, data: [gid...], visible, opacity, solid, collides: [gids]|fn,
+             offsetX, offsetY }] }, x?, y?)
+Methods: getLayer, getTileAt, setTileAt, getTileAtWorld, setTileAtWorld, tileToWorld,
+worldToTile, setLayerVisible, setLayerCollision, isSolid, getSolidTilesInRect, collidesRect.
+Collision: physics.collideTilemap(obj,map,cb?) each update or
+physics.addTilemapCollider(obj,map,cb?) once.
+
+## Math / utils
+
+Chroms.Math: clamp, clamp01, lerp, inverseLerp, map, smoothstep, sign, wrap, snap, degToRad,
+radToDeg, angleBetween, distanceBetween, distanceSq, rotate, randomInt, randomFloat, pick, shuffle.
+Chroms.Vec2, Chroms.Random(seed), Chroms.Ease, Chroms.resolveEase(name), Chroms.EventEmitter,
+Chroms.SaveManager, Chroms.utils.{uid,clone,deepMerge,isObject}.
+
+## Common mistakes
+
+- Registering colliders inside update (do it once).
+- Moving a body by writing x instead of setVelocity.
+- Expecting physics feedback immediately after setting velocity.
+- Using physics.overlap for collectibles that need separation (use collide).
+- Forgetting setScrollFactor(0) on HUD.
+- Referencing an unloaded texture key (falls back to a color rectangle).
+- Playing audio before a user gesture.
+- Loading JSON from file://.
+- Storing state on scene objects across startScene (destroyed).
+- Using a scene timer after restart (cleared).
+
+## Suggested AI workflow
+
+1. Read this file, then docs/api.json for exact signatures.
+2. Write a single HTML file with chroms.js, one Scene subclass per screen.
+3. Use shapes if no assets exist; or queue exact asset paths in preload.
+4. Register colliders in create, move with setVelocity in update, HUD with setScrollFactor(0).
+5. Validate: node --check chroms.js, node test/smoke.js, open the page and check console.
+6. Verify canvas size, spawn point, world bounds and camera bounds.
