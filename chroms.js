@@ -1,8 +1,10 @@
-/*! Chroms Engine v1.1.1 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
+/*! Chroms Engine v1.1.2 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
 /* ---- 00-core.js ---- */
 /**
- * Chroms Engine v1.1.1
+ * Chroms Engine v1.1.2
  * A modular 2D game engine for the browser, designed for humans and AI agents.
+ * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
+ * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
  *
  * This file is part of the source bundle in src/. The distributable is chroms.js,
  * produced by `node build.js`. Do not edit chroms.js directly.
@@ -10,7 +12,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.1.1';
+  const VERSION = '1.1.2';
   let _uid = 0;
 
   function uid(prefix) {
@@ -1572,10 +1574,6 @@
     setAllowSleep() {
       return this;
     }
-    setAllowGravity(value) {
-      this.allowGravity = value === undefined ? true : !!value;
-      return this;
-    }
     getBounds() {
       return { x: this.x, y: this.y, width: this.width, height: this.height };
     }
@@ -1683,7 +1681,11 @@
         b,
         callback: callback || null,
         overlapOnly: !!opts.overlapOnly,
-        scene: (a && a.scene) || (b && b.scene) || null,
+        scene:
+          (a && a.scene) ||
+          (b && b.scene) ||
+          (this.game && this.game.currentScene) ||
+          null,
         active: true,
         object: null
       };
@@ -2008,6 +2010,7 @@
 
     /** Advance the world using a fixed timestep accumulator. */
     step(delta) {
+      this.stats.pairs = 0;
       if (!this.enabled || this.bodies.length === 0) {
         this._processColliders();
         return;
@@ -3015,14 +3018,11 @@
         ctx.fillStyle = this._pattern;
         ctx.fillRect(0, 0, this.width, this.height);
       } else {
-        ctx.translate(-(this.tilePositionX % (sw || 1)), -(this.tilePositionY % (sh || 1)));
+        const offsetX = -(this.tilePositionX % (sw || 1));
+        const offsetY = -(this.tilePositionY % (sh || 1));
+        ctx.translate(offsetX, offsetY);
         ctx.fillStyle = this._pattern;
-        ctx.fillRect(
-          -(this.tilePositionX % (sw || 1)),
-          -(this.tilePositionY % (sh || 1)),
-          this.width + sw,
-          this.height + sh
-        );
+        ctx.fillRect(0, 0, this.width + sw, this.height + sh);
       }
       ctx.restore();
     }
@@ -3152,6 +3152,28 @@
     }
     getFirst(aliveOnly) {
       return this.children.find((child) => !aliveOnly || (child.active && !child.destroyed)) || null;
+    }
+    getByName(name) {
+      return this.children.find((child) => child.name === name) || null;
+    }
+    /** Nearest child to a point, by center distance. */
+    getClosest(x, y, aliveOnly) {
+      let best = null;
+      let bestDistance = Infinity;
+      this.children.forEach((child) => {
+        if (aliveOnly && (!child.active || child.destroyed)) return;
+        const distance = MathUtils.distanceSq(
+          x,
+          y,
+          child.x + child.displayWidth / 2,
+          child.y + child.displayHeight / 2
+        );
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = child;
+        }
+      });
+      return best;
     }
     getLast(aliveOnly) {
       for (let i = this.children.length - 1; i >= 0; i -= 1) {
@@ -3516,14 +3538,12 @@
           this.elapsed = 0;
           if (this.onYoyo) this.onYoyo(this);
           if (this.hold > 0) this.holdElapsed = this.hold;
-          this._apply(0);
           return;
         }
         if (this.repeat === -1 || this.repeatCount < this.repeat) {
           if (this.repeat !== -1) this.repeatCount += 1;
           this.direction = 1;
           this.elapsed = 0;
-          this._apply(0);
           if (this.onRepeat) this.onRepeat(this, this.repeatCount);
           if (this.hold > 0) this.holdElapsed = this.hold;
           return;
@@ -3825,6 +3845,7 @@
     constructor(game) {
       this.game = game;
       this.anims = {};
+      this.sprites = [];
       this.events = new EventEmitter();
     }
     /**
@@ -3893,6 +3914,7 @@
         onFrame: def.onFrame
       };
       sprite._anim = anim;
+      if (this.sprites.indexOf(sprite) === -1) this.sprites.push(sprite);
       sprite.frame = def.frames[0];
       sprite.events.emit('animationstart', key, sprite);
       this.events.emit('start', key, sprite);
@@ -3905,8 +3927,23 @@
       }
       return this;
     }
+    _liveSprites() {
+      this.sprites = this.sprites.filter((sprite) => sprite && !sprite.destroyed);
+      return this.sprites;
+    }
     pauseAll() {
-      Object.keys(this.anims).forEach(() => {});
+      this._liveSprites().forEach((sprite) => sprite.pause());
+      this.events.emit('pause-all');
+      return this;
+    }
+    resumeAll() {
+      this._liveSprites().forEach((sprite) => sprite.resume());
+      this.events.emit('resume-all');
+      return this;
+    }
+    stopAll() {
+      this._liveSprites().forEach((sprite) => sprite.stop());
+      this.events.emit('stop-all');
       return this;
     }
   }
@@ -4032,6 +4069,7 @@
         const speed = this._range(this.config.speed, 40, 120);
         const angle = this._range(this.config.angle, 0, 360);
         const lifespan = this._range(this.config.lifespan, 600, 1200);
+        const sizes = this._range(this.config.size, 4, 4);
         const angleRad = MathUtils.degToRad(this._rng.float(angle.min, angle.max));
         const speedValue = this._rng.float(speed.min, speed.max);
         let px = x;
@@ -4056,6 +4094,7 @@
           vy: Math.sin(angleRad) * speedValue,
           life,
           maxLife: life,
+          size: this._rng.float(sizes.min, sizes.max),
           rotation: this._rng.float(0, Math.PI * 2),
           rotationSpeed: MathUtils.degToRad(this.config.rotateSpeed),
           seed: this._rng.next()
@@ -4156,6 +4195,7 @@
         const scaleCfg = this._range(this.config.scale, 1, 0.2);
         const alpha = MathUtils.lerp(alphaCfg.min, alphaCfg.max, t);
         const scale = MathUtils.lerp(scaleCfg.min, scaleCfg.max, t);
+        const sizeBase = p.size === undefined ? this.config.size : p.size;
         const baseColor = sampleColors(
           this.config.colors,
           t
@@ -4166,7 +4206,7 @@
         ctx.translate(p.x - this.x, p.y - this.y);
         if (this.config.rotate) ctx.rotate(p.rotation);
         if (texture) {
-          const size = this.config.size * scale;
+          const size = sizeBase * scale;
           ctx.drawImage(texture, -size / 2, -size / 2, size, size);
         } else {
           ctx.fillStyle =
@@ -4178,11 +4218,11 @@
             Math.round(baseColor.b) +
             ')';
           if (this.config.shape === 'square') {
-            const size = this.config.size * scale;
+            const size = sizeBase * scale;
             ctx.fillRect(-size / 2, -size / 2, size, size);
           } else {
             ctx.beginPath();
-            ctx.arc(0, 0, Math.max(0.5, (this.config.size * scale) / 2), 0, Math.PI * 2);
+            ctx.arc(0, 0, Math.max(0.5, (sizeBase * scale) / 2), 0, Math.PI * 2);
             ctx.fill();
           }
         }
@@ -4222,7 +4262,9 @@
       this.flashAlpha = 0;
       this.flashColor = '#ffffff';
       this.backgroundColor = null;
+      this.visible = true;
       this._fadeTween = null;
+      this._panTween = null;
     }
 
     setBounds(x, y, width, height) {
@@ -4260,6 +4302,22 @@
         zoom: value,
         duration,
         ease: ease || 'sine.inOut'
+      });
+      return this;
+    }
+    /** Glide the camera to a world position over `duration` ms. */
+    panTo(x, y, duration, ease) {
+      if (!this.scene || !this.scene.tweens || !duration) return this.scrollTo(x, y);
+      if (this._panTween) this._panTween.stop();
+      this._panTween = this.scene.tweens.add({
+        targets: this,
+        x,
+        y,
+        duration,
+        ease: ease || 'sine.inOut',
+        onComplete: () => {
+          this._panTween = null;
+        }
       });
       return this;
     }
@@ -4331,6 +4389,8 @@
     }
     fadeOut(duration, color, callback) {
       if (color) this.fadeColor = color;
+      if (this._fadeTween) this._fadeTween.stop();
+      this._fadeTween = null;
       this.fadeAlpha = 0;
       if (!this.scene || !this.scene.tweens) {
         this.fadeAlpha = 1;
@@ -4350,6 +4410,8 @@
     }
     fadeIn(duration, color, callback) {
       if (color) this.fadeColor = color;
+      if (this._fadeTween) this._fadeTween.stop();
+      this._fadeTween = null;
       if (!this.scene || !this.scene.tweens) {
         this.fadeAlpha = 0;
         if (callback) callback(this);
@@ -5287,6 +5349,40 @@
       return this;
     }
 
+    /**
+     * Crisp pixel-art rendering: disables smoothing and pins the canvas to
+     * 1 device pixel per game pixel. `setPixelArt(false)` restores defaults.
+     */
+    setPixelArt(value) {
+      const enabled = value === undefined ? true : !!value;
+      this.antialias = !enabled;
+      this.pixelRatio = enabled
+        ? 1
+        : global.devicePixelRatio
+        ? Math.min(2, global.devicePixelRatio)
+        : 1;
+      if (this.canvas && this.canvas.style) {
+        this.canvas.style.imageRendering = enabled ? 'pixelated' : '';
+      }
+      this.resize();
+      return this;
+    }
+
+    /** Toggle browser fullscreen for the document; resolves without error if blocked. */
+    toggleFullscreen() {
+      const doc = global.document;
+      if (!doc) return this;
+      const request = doc.fullscreenElement ? doc.exitFullscreen : null;
+      const target = doc.documentElement;
+      const promise = request
+        ? request.call(doc)
+        : target && target.requestFullscreen
+        ? target.requestFullscreen()
+        : null;
+      if (promise && promise.catch) promise.catch(() => {});
+      return this;
+    }
+
     _loop(timestamp) {
       if (!this.running) return;
       this._raf = requestAnimationFrame((time) => this._loop(time));
@@ -5516,6 +5612,8 @@
       version: VERSION,
       runtime: 'browser',
       renderer: 'Canvas 2D',
+      inspiration:
+        'API shapes inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera), independent Canvas 2D implementation',
       units: {
         duration: 'milliseconds for tweens and timers',
         angles: 'degrees in object.angle / setAngle(); radians in math helpers',
@@ -5548,6 +5646,7 @@
           'tilemap',
           'button',
           'joystick',
+          'animatedSprite',
           'existing'
         ],
         physics:

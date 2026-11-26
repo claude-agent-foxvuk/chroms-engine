@@ -1,6 +1,10 @@
-# Chroms Engine v1.1.1 — документация
+# Chroms Engine v1.1.2 — документация
 
-Chroms — 2D-движок для браузера без зависимостей. Рисует через Canvas 2D, поставляется одним файлом `chroms.js`, а игровая логика живёт в подклассах `Chroms.Scene` с API, похожим на Phaser. Документация рассчитана и на людей, и на нейросети: в репозитории есть [`llms.txt`](../llms.txt), [`api.json`](../api.json) и рантайм-манифест `Chroms.describe()`.
+Chroms — 2D-движок для браузера без зависимостей. Рисует через Canvas 2D, поставляется одним файлом `chroms.js`, а игровая логика живёт в подклассах `Chroms.Scene`.
+
+API вдохновлён **Phaser 3**: сцены с `preload`/`create`/`update`, фабрика `add`, группы, твины, таймеры и камера. Реализация независимая, только Canvas 2D: Phaser не входит в сборку, не импортируется и не требуется.
+
+Документация рассчитана и на людей, и на нейросети: в репозитории есть [`llms.txt`](../llms.txt), [`api.json`](../api.json) и рантайм-манифест `Chroms.describe()`.
 
 ## Установка
 
@@ -115,6 +119,8 @@ English (primary): [`../en/index.md`](../en/index.md).
 
 **Инструменты** — `Chroms.describe()`, `docs/llms.txt`, `docs/api.json`, headless-смоук-тест, браузерный showcase.
 
+**Новое в 1.1.2** — `camera.panTo(x, y, ms, ease?)`, `game.setPixelArt(bool)`, `game.toggleFullscreen()`, `group.getByName(name)`, `group.getClosest(x, y, aliveOnly?)`, `anims.pauseAll/resumeAll/stopAll`, размер частиц диапазоном `{ min, max }`.
+
 ## Совместимость и ограничения
 
 - Только Canvas 2D: нет WebGL, шейдеров, батчинга и render texture.
@@ -125,4 +131,4 @@ English (primary): [`../en/index.md`](../en/index.md).
 - Логика и рендер в одном потоке, без воркеров.
 - Переключение сцены уничтожает объекты, твины и таймеры предыдущей сцены.
 
-Версия: **1.1.1** (`Chroms.version`, `Chroms.VERSION`).
+Версия: **1.1.2** (`Chroms.version`, `Chroms.VERSION`).

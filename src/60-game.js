@@ -337,6 +337,40 @@
       return this;
     }
 
+    /**
+     * Crisp pixel-art rendering: disables smoothing and pins the canvas to
+     * 1 device pixel per game pixel. `setPixelArt(false)` restores defaults.
+     */
+    setPixelArt(value) {
+      const enabled = value === undefined ? true : !!value;
+      this.antialias = !enabled;
+      this.pixelRatio = enabled
+        ? 1
+        : global.devicePixelRatio
+        ? Math.min(2, global.devicePixelRatio)
+        : 1;
+      if (this.canvas && this.canvas.style) {
+        this.canvas.style.imageRendering = enabled ? 'pixelated' : '';
+      }
+      this.resize();
+      return this;
+    }
+
+    /** Toggle browser fullscreen for the document; resolves without error if blocked. */
+    toggleFullscreen() {
+      const doc = global.document;
+      if (!doc) return this;
+      const request = doc.fullscreenElement ? doc.exitFullscreen : null;
+      const target = doc.documentElement;
+      const promise = request
+        ? request.call(doc)
+        : target && target.requestFullscreen
+        ? target.requestFullscreen()
+        : null;
+      if (promise && promise.catch) promise.catch(() => {});
+      return this;
+    }
+
     _loop(timestamp) {
       if (!this.running) return;
       this._raf = requestAnimationFrame((time) => this._loop(time));
@@ -566,6 +600,8 @@
       version: VERSION,
       runtime: 'browser',
       renderer: 'Canvas 2D',
+      inspiration:
+        'API shapes inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera), independent Canvas 2D implementation',
       units: {
         duration: 'milliseconds for tweens and timers',
         angles: 'degrees in object.angle / setAngle(); radians in math helpers',
@@ -598,6 +634,7 @@
           'tilemap',
           'button',
           'joystick',
+          'animatedSprite',
           'existing'
         ],
         physics:

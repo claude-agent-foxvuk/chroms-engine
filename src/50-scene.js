@@ -24,7 +24,9 @@
       this.flashAlpha = 0;
       this.flashColor = '#ffffff';
       this.backgroundColor = null;
+      this.visible = true;
       this._fadeTween = null;
+      this._panTween = null;
     }
 
     setBounds(x, y, width, height) {
@@ -62,6 +64,22 @@
         zoom: value,
         duration,
         ease: ease || 'sine.inOut'
+      });
+      return this;
+    }
+    /** Glide the camera to a world position over `duration` ms. */
+    panTo(x, y, duration, ease) {
+      if (!this.scene || !this.scene.tweens || !duration) return this.scrollTo(x, y);
+      if (this._panTween) this._panTween.stop();
+      this._panTween = this.scene.tweens.add({
+        targets: this,
+        x,
+        y,
+        duration,
+        ease: ease || 'sine.inOut',
+        onComplete: () => {
+          this._panTween = null;
+        }
       });
       return this;
     }
@@ -133,6 +151,8 @@
     }
     fadeOut(duration, color, callback) {
       if (color) this.fadeColor = color;
+      if (this._fadeTween) this._fadeTween.stop();
+      this._fadeTween = null;
       this.fadeAlpha = 0;
       if (!this.scene || !this.scene.tweens) {
         this.fadeAlpha = 1;
@@ -152,6 +172,8 @@
     }
     fadeIn(duration, color, callback) {
       if (color) this.fadeColor = color;
+      if (this._fadeTween) this._fadeTween.stop();
+      this._fadeTween = null;
       if (!this.scene || !this.scene.tweens) {
         this.fadeAlpha = 0;
         if (callback) callback(this);

@@ -1,6 +1,8 @@
 /**
- * Chroms Engine v1.1.1
+ * Chroms Engine v1.1.2
  * A modular 2D game engine for the browser, designed for humans and AI agents.
+ * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
+ * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
  *
  * This file is part of the source bundle in src/. The distributable is chroms.js,
  * produced by `node build.js`. Do not edit chroms.js directly.
@@ -8,7 +10,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.1.1';
+  const VERSION = '1.1.2';
   let _uid = 0;
 
   function uid(prefix) {

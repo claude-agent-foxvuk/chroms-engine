@@ -1,6 +1,7 @@
-# Chroms Engine v1.1.1 — LLM quick reference
+# Chroms Engine v1.1.2 — LLM quick reference
 
 Chroms is a dependency-free Canvas 2D game engine for browsers. Single file: chroms.js.
+API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent implementation.
 Global: window.Chroms. Classic script: no imports, no JSX, no TypeScript, no bundler.
 Docs: docs/en/index.md (English, primary), docs/ru/index.md (Russian).
 API manifest: docs/api.json. Runtime manifest: Chroms.describe().
@@ -170,7 +171,8 @@ Manager: remove(timer), clear/removeAll, removeByName, pauseAll, resumeAll, time
 scene.add.particles(x, y, {
   speed: {min,max}, angle: {min,max} (deg), lifespan: {min,max} (ms),
   quantity, frequency (ms; -1 = no auto emit), max, gravityX, gravityY,
-  color, colors: [..], alpha: {start,end}, scale: {start,end}, size, shape: 'circle'|'square',
+  color, colors: [..], alpha: {start,end}, scale: {start,end}, size: n | {min,max},
+  shape: 'circle'|'square',
   texture, blendMode, emitting, rotate, rotateSpeed, seed, follow,
   emitZone: {type:'rect',x,y,width,height} | {type:'circle',radius},
   onParticle(p)
@@ -184,6 +186,7 @@ scene.camera (scene.cameras[0]).
 follow(target, { lerpX, lerpY, lerp, offsetX, offsetY, deadzoneWidth, deadzoneHeight }),
 startFollow, stopFollow, setLerp, setFollowOffset, setDeadzone, centerOn, scrollTo,
 setBounds(x,y,w,h|{x,y,width,height}), clearBounds, setZoom, zoomTo(zoom,ms,ease?),
+panTo(x, y, ms, ease?),
 shake(durationMs, intensityPx), fadeOut(ms,color?,cb?), fadeIn(ms,color?,cb?),
 flash(color,ms), screenToWorld(x,y), worldToScreen(x,y), worldView {x,y,width,height},
 setSize/resize, setBackgroundColor, setZoom, backgroundColor.
@@ -205,6 +208,7 @@ JSON/text/atlas URLs need HTTP; images/audio work on file://.
 
 scene.anims.create({ key, spritesheet?, frames: [indices] | {start,end}, frameRate, repeat, yoyo }).
 sprite.play(key, { ignoreIfPlaying }), stop, pause, resume, isPlaying.
+scene.anims.pauseAll(), resumeAll(), stopAll().
 sprite.setTexture(key, frame?), setFrame(frame), setFlip(x,y?).
 
 ## Audio
@@ -227,7 +231,7 @@ Game config storagePrefix.
 scene.start(key, data?, { fade, fadeColor }), restart(), stop(), pause(), resume(), sleep(), wake().
 game.startScene(key, data?, options), stopScene(key?), pauseScene, resumeScene,
 sleepScene, wakeScene, pause/resume/togglePause, setTimeScale, screenshot, use(plugin),
-describe(), destroy().
+setPixelArt(bool), toggleFullscreen(), describe(), destroy().
 Game events: ready, start, stop, pause, resume, preupdate, postupdate, scene-added,
 scene-start, scene-create, scene-stop, scene-load-progress, load-start/progress/complete,
 debug-toggle, visibility, resize, plugin-install, destroy.
@@ -235,8 +239,9 @@ debug-toggle, visibility, resize, plugin-install, destroy.
 ## Groups / containers
 
 Group: create(x,y,w,h,texture), add, addMultiple, remove(child,destroy?), clear(destroy?),
-getChildren, getFirst(aliveOnly?), getLast, getRandom, countActive, contains, forEach, filter,
-find, length. Children are world-space and removed from scene.children.
+getChildren, getFirst(aliveOnly?), getByName(name), getClosest(x, y, aliveOnly?), getLast,
+getRandom, countActive, contains, forEach, filter, find, length.
+Children are world-space and removed from scene.children.
 Container: add, addMultiple, remove(child,destroy?), removeAll(destroy?), getChildren,
 getFirst, getByName, length. Children are local; inherit transform; no physics.
 

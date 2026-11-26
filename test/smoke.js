@@ -163,7 +163,7 @@ global.localStorage = (() => {
 })();
 
 const Chroms = require(path.join(__dirname, '..', 'chroms.js'));
-assert.strictEqual(Chroms.version, '1.1.1');
+assert.strictEqual(Chroms.version, '1.1.2');
 assert.ok(Chroms.describe().systems.physics.includes('AABB'));
 
 const parent = createElement('div');
@@ -192,6 +192,11 @@ class TestScene extends Chroms.Scene {
     this.group = this.add.group();
     this.group.create(600, 300, 30, 30, '#a6e3a1').enablePhysics({ immovable: true });
     this.physics.addCollider(this.player, this.group);
+    // A collider between plain objects must not leak into the next scene.
+    this.physics.addCollider(
+      { x: 0, y: 0, width: 2, height: 2 },
+      { x: 0, y: 0, width: 2, height: 2 }
+    );
 
     this.emitter = this.add.particles(200, 100, {
       speed: { min: 10, max: 20 },
@@ -387,6 +392,78 @@ assert.ok(sceneRef.scoreText.text.length > 0, 'typewriter should reveal text');
 
 assert.ok(game.screenshot().startsWith('data:image/png'));
 
+// --- 1.1.2 regressions ---
+
+// A hold keeps the end value before a yoyo leg starts.
+const holder = { value: 0 };
+const holdTween = sceneRef.tweens.add({
+  targets: holder,
+  value: 100,
+  duration: 100,
+  yoyo: true,
+  hold: 50
+});
+holdTween.update(100);
+assert.strictEqual(holder.value, 100, 'tween should reach the end value');
+holdTween.update(25);
+assert.strictEqual(holder.value, 100, 'tween should hold the end value');
+holdTween.update(50);
+assert.ok(holder.value < 100 && holder.value > 0, 'tween should yoyo back, got ' + holder.value);
+holdTween.stop();
+
+// Particle size accepts a range and is sampled per particle.
+const ranged = sceneRef.add.particles(20, 20, { size: { min: 4, max: 8 }, frequency: -1 });
+ranged.explode(4);
+assert.strictEqual(ranged.particles.length, 4, 'explode should emit particles');
+assert.ok(
+  ranged.particles.every((particle) => particle.size >= 4 && particle.size <= 8),
+  'particle size should be sampled from the range'
+);
+ranged.destroy();
+
+// Animation manager drives every sprite that played an animation.
+sceneRef.anims.pauseAll();
+assert.ok(sceneRef.player._anim.paused, 'anims.pauseAll should pause sprites');
+sceneRef.anims.resumeAll();
+assert.ok(!sceneRef.player._anim.paused, 'anims.resumeAll should resume sprites');
+sceneRef.anims.stopAll();
+assert.ok(!sceneRef.player.isPlaying(), 'anims.stopAll should stop playback');
+sceneRef.player.play('spin');
+
+// Group lookup helpers.
+const wall = sceneRef.group.getFirst(true);
+wall.setName('wall');
+assert.strictEqual(sceneRef.group.getByName('wall'), wall, 'group.getByName');
+assert.strictEqual(sceneRef.group.getByName('missing'), null, 'group.getByName miss');
+assert.strictEqual(
+  sceneRef.group.getClosest(wall.x + 1, wall.y + 1, true),
+  wall,
+  'group.getClosest'
+);
+
+// Camera panTo tweens the camera position.
+sceneRef.camera.panTo(500, 400, 120);
+const panTween = sceneRef.tweens.tweens.filter(
+  (item) => item.targets.indexOf(sceneRef.camera) !== -1
+)[0];
+assert.ok(panTween, 'panTo should tween the camera');
+panTween.update(60);
+assert.ok(sceneRef.camera.x > 0, 'panTo should move the camera');
+panTween.stop();
+
+// Pixel-art switch and fullscreen guard.
+game.setPixelArt(true);
+assert.strictEqual(game.antialias, false, 'setPixelArt disables smoothing');
+assert.strictEqual(game.pixelRatio, 1, 'setPixelArt pins the pixel ratio');
+assert.strictEqual(game.canvas.style.imageRendering, 'pixelated');
+game.setPixelArt(false);
+assert.strictEqual(game.antialias, true, 'setPixelArt(false) restores smoothing');
+assert.strictEqual(game.toggleFullscreen(), game, 'toggleFullscreen is safe without the API');
+
+const manifest = Chroms.describe();
+assert.ok(manifest.inspiration.indexOf('Phaser 3') !== -1, 'manifest should credit Phaser 3');
+assert.ok(manifest.systems.add.indexOf('animatedSprite') !== -1, 'manifest should list animatedSprite');
+
 // Scene switching + cleanup.
 class SecondScene extends Chroms.Scene {
   constructor() {
@@ -405,6 +482,7 @@ assert.strictEqual(sceneRef.events.listenerCount('custom-event'), 0, 'scene list
 
 const bodiesAfterSwitch = game.physics.bodies.length;
 assert.strictEqual(bodiesAfterSwitch, 0, 'old scene bodies removed');
+assert.strictEqual(game.physics.colliders.length, 0, 'old scene colliders removed');
 
 game.startScene('test');
 assert.ok(game.currentScene.created === undefined || game.currentScene.created === true);

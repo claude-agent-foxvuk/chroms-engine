@@ -1,7 +1,8 @@
 {
   "name": "Chroms",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "runtime": "browser",
+  "inspiration": "API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent Canvas 2D implementation",
   "global": "window.Chroms",
   "module": "CommonJS module.exports when loaded in Node",
   "docs": {
@@ -82,6 +83,8 @@
         "togglePause()": "toggle pause",
         "setTimeScale(value)": "global speed",
         "setBackgroundColor(color)": "clear color",
+        "setPixelArt(value?)": "crisp pixel-art rendering: no smoothing, pixelRatio 1, image-rendering pixelated",
+        "toggleFullscreen()": "request or exit document fullscreen; ignores browsers that block it",
         "resize()": "recompute canvas and CSS size",
         "render()": "draw one frame manually",
         "screenshot(type?)": "canvas data URL",
@@ -186,7 +189,7 @@
       "extends": "GameObject",
       "config": ["classType", "runChildUpdate", "maxSize", "defaults.setup"],
       "properties": ["children", "length"],
-      "methods": ["create(x, y, w, h, texture?)", "add(child)", "addMultiple(children)", "remove(child, destroyChild?)", "clear(destroyChildren?)", "getChildren()", "getFirst(aliveOnly?)", "getLast(aliveOnly?)", "getRandom(aliveOnly?)", "countActive(value?)", "contains(child)", "forEach(fn)", "filter(fn)", "find(fn)"]
+      "methods": ["create(x, y, w, h, texture?)", "add(child)", "addMultiple(children)", "remove(child, destroyChild?)",         "clear(destroyChildren?)", "getChildren()", "getFirst(aliveOnly?)", "getByName(name)", "getClosest(x, y, aliveOnly?)", "getLast(aliveOnly?)", "getRandom(aliveOnly?)", "countActive(value?)", "contains(child)", "forEach(fn)", "filter(fn)", "find(fn)"]
     },
     "Button": {
       "extends": "GameObject",
@@ -217,7 +220,7 @@
     },
     "Camera": {
       "properties": ["x", "y", "width", "height", "zoom", "bounds", "followTarget", "lerp", "followOffset", "deadzone", "shakeOffset", "fadeAlpha", "fadeColor", "flashAlpha", "flashColor", "backgroundColor", "worldView"],
-      "methods": ["setBounds(x, y, w, h | object)", "clearBounds()", "setSize(w, h)", "resize(w, h)", "setZoom(z)", "zoomTo(z, ms, ease?)", "setBackgroundColor(color)", "follow(target, options?)", "startFollow(target, options?)", "stopFollow()", "setLerp(x, y?)", "setFollowOffset(x, y?)", "setDeadzone(w, h)", "centerOn(x, y)", "scrollTo(x, y)", "shake(durationMs, intensityPx?)", "fadeOut(ms, color?, callback?)", "fadeIn(ms, color?, callback?)", "flash(color, ms?)", "screenToWorld(x, y)", "worldToScreen(x, y)"]
+      "methods": ["setBounds(x, y, w, h | object)", "clearBounds()", "setSize(w, h)", "resize(w, h)",         "setZoom(z)", "zoomTo(z, ms, ease?)", "panTo(x, y, ms, ease?)", "setBackgroundColor(color)", "follow(target, options?)", "startFollow(target, options?)", "stopFollow()", "setLerp(x, y?)", "setFollowOffset(x, y?)", "setDeadzone(w, h)", "centerOn(x, y)", "scrollTo(x, y)", "shake(durationMs, intensityPx?)", "fadeOut(ms, color?, callback?)", "fadeIn(ms, color?, callback?)", "flash(color, ms?)", "screenToWorld(x, y)", "worldToScreen(x, y)"]
     },
     "InputManager": {
       "properties": ["keys", "pointer", "pointers", "wheelDelta", "enabled", "gamepads", "events"],
@@ -251,8 +254,8 @@
     },
     "AnimationManager": {
       "properties": ["anims", "events"],
-      "methods": ["create({ key, frames | spritesheet+start/end, frameRate, repeat, yoyo, onComplete, onFrame })", "exists(key)", "get(key)", "getAll()", "remove(key)", "play(sprite, key, options?)", "stop(sprite)"],
-      "events": ["create", "start", "stop"]
+      "methods": ["create({ key, frames | spritesheet+start/end, frameRate, repeat, yoyo, onComplete, onFrame })", "exists(key)", "get(key)", "getAll()", "remove(key)",         "play(sprite, key, options?)", "stop(sprite)", "pauseAll()", "resumeAll()", "stopAll()"],
+      "events": ["create", "start", "stop", "pause-all", "resume-all", "stop-all"]
     },
     "Tilemap": {
       "extends": "GameObject",

@@ -1,8 +1,8 @@
 {
   "configVersion": 1,
   "name": "chroms",
-  "version": "1.1.1",
-  "engine": "^1.1.1",
+  "version": "1.1.2",
+  "engine": "^1.1.2",
   "description": "Chroms 2D browser game engine for humans and AI agents, API inspired by Phaser 3",
   "author": "FoxVuk",
   "license": "UNLICENSED",

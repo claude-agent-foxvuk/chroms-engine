@@ -1,6 +1,10 @@
-# Chroms Engine v1.1.1 — documentation
+# Chroms Engine v1.1.2 — documentation
 
-Chroms is a dependency-free 2D engine for the browser. It draws with Canvas 2D, ships as a single `chroms.js`, and keeps gameplay code in `Scene` subclasses with a Phaser-like shape. The API is documented for humans first, and the repository also ships machine-readable material for AI agents: [`llms.txt`](../llms.txt), [`api.json`](../api.json) and the runtime `Chroms.describe()` manifest.
+Chroms is a dependency-free 2D engine for the browser. It draws with Canvas 2D, ships as a single `chroms.js`, and keeps gameplay code in `Scene` subclasses.
+
+The API is inspired by **Phaser 3**: scenes with `preload`/`create`/`update`, an `add` factory, groups, tweens, timers and a camera. It is an independent Canvas 2D implementation — Phaser is not bundled, imported or required, and none of its code is used.
+
+The API is documented for humans first, and the repository also ships machine-readable material for AI agents: [`llms.txt`](../llms.txt), [`api.json`](../api.json) and the runtime `Chroms.describe()` manifest.
 
 ## Install
 
@@ -117,6 +121,8 @@ Russian translation: [`../ru/index.md`](../ru/index.md).
 
 **Tooling** — `Chroms.describe()`, `docs/llms.txt`, `docs/api.json`, a headless smoke test, a browser showcase.
 
+**1.1.2 additions** — `camera.panTo(x, y, ms, ease?)`, `game.setPixelArt(bool)`, `game.toggleFullscreen()`, `group.getByName(name)`, `group.getClosest(x, y, aliveOnly?)`, `anims.pauseAll/resumeAll/stopAll`, ranged particle `size`.
+
 ## Compatibility and limits
 
 Chroms targets current evergreen browsers. It deliberately stays small:
@@ -131,4 +137,4 @@ Chroms targets current evergreen browsers. It deliberately stays small:
 
 ## Version
 
-Current version: **1.1.1**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.
+Current version: **1.1.2**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.

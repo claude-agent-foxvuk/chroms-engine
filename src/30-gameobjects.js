@@ -816,14 +816,11 @@
         ctx.fillStyle = this._pattern;
         ctx.fillRect(0, 0, this.width, this.height);
       } else {
-        ctx.translate(-(this.tilePositionX % (sw || 1)), -(this.tilePositionY % (sh || 1)));
+        const offsetX = -(this.tilePositionX % (sw || 1));
+        const offsetY = -(this.tilePositionY % (sh || 1));
+        ctx.translate(offsetX, offsetY);
         ctx.fillStyle = this._pattern;
-        ctx.fillRect(
-          -(this.tilePositionX % (sw || 1)),
-          -(this.tilePositionY % (sh || 1)),
-          this.width + sw,
-          this.height + sh
-        );
+        ctx.fillRect(0, 0, this.width + sw, this.height + sh);
       }
       ctx.restore();
     }
@@ -953,6 +950,28 @@
     }
     getFirst(aliveOnly) {
       return this.children.find((child) => !aliveOnly || (child.active && !child.destroyed)) || null;
+    }
+    getByName(name) {
+      return this.children.find((child) => child.name === name) || null;
+    }
+    /** Nearest child to a point, by center distance. */
+    getClosest(x, y, aliveOnly) {
+      let best = null;
+      let bestDistance = Infinity;
+      this.children.forEach((child) => {
+        if (aliveOnly && (!child.active || child.destroyed)) return;
+        const distance = MathUtils.distanceSq(
+          x,
+          y,
+          child.x + child.displayWidth / 2,
+          child.y + child.displayHeight / 2
+        );
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = child;
+        }
+      });
+      return best;
     }
     getLast(aliveOnly) {
       for (let i = this.children.length - 1; i >= 0; i -= 1) {

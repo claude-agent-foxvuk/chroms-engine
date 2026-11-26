@@ -138,10 +138,6 @@
     setAllowSleep() {
       return this;
     }
-    setAllowGravity(value) {
-      this.allowGravity = value === undefined ? true : !!value;
-      return this;
-    }
     getBounds() {
       return { x: this.x, y: this.y, width: this.width, height: this.height };
     }
@@ -249,7 +245,11 @@
         b,
         callback: callback || null,
         overlapOnly: !!opts.overlapOnly,
-        scene: (a && a.scene) || (b && b.scene) || null,
+        scene:
+          (a && a.scene) ||
+          (b && b.scene) ||
+          (this.game && this.game.currentScene) ||
+          null,
         active: true,
         object: null
       };
@@ -574,6 +574,7 @@
 
     /** Advance the world using a fixed timestep accumulator. */
     step(delta) {
+      this.stats.pairs = 0;
       if (!this.enabled || this.bodies.length === 0) {
         this._processColliders();
         return;

@@ -2,6 +2,37 @@
 
 All notable changes to Chroms. The project follows semantic versioning.
 
+## [1.1.2] — 2026-11-26
+
+A bug-fix release with a small set of additions. Nothing in 1.1.1 is removed.
+
+### Added
+
+- `camera.panTo(x, y, duration, ease?)` glides the camera to a world position with a tween.
+- `game.setPixelArt(true)` switches to crisp pixel-art rendering (no smoothing, one device pixel per game pixel); `setPixelArt(false)` restores the defaults.
+- `game.toggleFullscreen()` requests or exits document fullscreen and resolves quietly when the browser blocks it.
+- `group.getByName(name)` and `group.getClosest(x, y, aliveOnly?)` on `Group`.
+- `anims.pauseAll()`, `anims.resumeAll()` and `anims.stopAll()` now drive every sprite that played an animation; previously `pauseAll` was a no-op.
+- Particle `size` accepts `{ min, max }` and is sampled per particle.
+
+### Fixed
+
+- `TileSprite` applied its scroll offset twice on browsers without `CanvasPattern.setTransform`, shifting the tiles.
+- Tween `hold` had no visible effect: yoyo and repeating tweens jumped back to their start value immediately instead of holding the end value.
+- Physics colliders built from plain objects survived a scene switch and kept colliding in the next scene; colliders are now scoped to the current scene.
+- `physics.stats.pairs` accumulated for the whole session instead of reporting pairs per step.
+- Starting a second `camera.fadeIn()`/`fadeOut()` while one was running tweened the same alpha twice.
+- `Body.setAllowGravity` was defined twice.
+
+### Docs
+
+- Version 1.1.2 across the README, API manifest, changelog and demos.
+- The README, docs and `Chroms.describe()` now state explicitly that the API is inspired by Phaser 3 (independent Canvas 2D implementation).
+
+### Tests
+
+- Regression coverage for tween hold, ranged particle size, animation manager control, group lookup, `panTo`, `setPixelArt`, the fullscreen guard and collider scene scoping.
+
 ## [1.1.1] — 2026-11-26
 
 ### Fixed

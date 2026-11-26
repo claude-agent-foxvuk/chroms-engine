@@ -150,14 +150,12 @@
           this.elapsed = 0;
           if (this.onYoyo) this.onYoyo(this);
           if (this.hold > 0) this.holdElapsed = this.hold;
-          this._apply(0);
           return;
         }
         if (this.repeat === -1 || this.repeatCount < this.repeat) {
           if (this.repeat !== -1) this.repeatCount += 1;
           this.direction = 1;
           this.elapsed = 0;
-          this._apply(0);
           if (this.onRepeat) this.onRepeat(this, this.repeatCount);
           if (this.hold > 0) this.holdElapsed = this.hold;
           return;
@@ -459,6 +457,7 @@
     constructor(game) {
       this.game = game;
       this.anims = {};
+      this.sprites = [];
       this.events = new EventEmitter();
     }
     /**
@@ -527,6 +526,7 @@
         onFrame: def.onFrame
       };
       sprite._anim = anim;
+      if (this.sprites.indexOf(sprite) === -1) this.sprites.push(sprite);
       sprite.frame = def.frames[0];
       sprite.events.emit('animationstart', key, sprite);
       this.events.emit('start', key, sprite);
@@ -539,8 +539,23 @@
       }
       return this;
     }
+    _liveSprites() {
+      this.sprites = this.sprites.filter((sprite) => sprite && !sprite.destroyed);
+      return this.sprites;
+    }
     pauseAll() {
-      Object.keys(this.anims).forEach(() => {});
+      this._liveSprites().forEach((sprite) => sprite.pause());
+      this.events.emit('pause-all');
+      return this;
+    }
+    resumeAll() {
+      this._liveSprites().forEach((sprite) => sprite.resume());
+      this.events.emit('resume-all');
+      return this;
+    }
+    stopAll() {
+      this._liveSprites().forEach((sprite) => sprite.stop());
+      this.events.emit('stop-all');
       return this;
     }
   }
@@ -666,6 +681,7 @@
         const speed = this._range(this.config.speed, 40, 120);
         const angle = this._range(this.config.angle, 0, 360);
         const lifespan = this._range(this.config.lifespan, 600, 1200);
+        const sizes = this._range(this.config.size, 4, 4);
         const angleRad = MathUtils.degToRad(this._rng.float(angle.min, angle.max));
         const speedValue = this._rng.float(speed.min, speed.max);
         let px = x;
@@ -690,6 +706,7 @@
           vy: Math.sin(angleRad) * speedValue,
           life,
           maxLife: life,
+          size: this._rng.float(sizes.min, sizes.max),
           rotation: this._rng.float(0, Math.PI * 2),
           rotationSpeed: MathUtils.degToRad(this.config.rotateSpeed),
           seed: this._rng.next()
@@ -790,6 +807,7 @@
         const scaleCfg = this._range(this.config.scale, 1, 0.2);
         const alpha = MathUtils.lerp(alphaCfg.min, alphaCfg.max, t);
         const scale = MathUtils.lerp(scaleCfg.min, scaleCfg.max, t);
+        const sizeBase = p.size === undefined ? this.config.size : p.size;
         const baseColor = sampleColors(
           this.config.colors,
           t
@@ -800,7 +818,7 @@
         ctx.translate(p.x - this.x, p.y - this.y);
         if (this.config.rotate) ctx.rotate(p.rotation);
         if (texture) {
-          const size = this.config.size * scale;
+          const size = sizeBase * scale;
           ctx.drawImage(texture, -size / 2, -size / 2, size, size);
         } else {
           ctx.fillStyle =
@@ -812,11 +830,11 @@
             Math.round(baseColor.b) +
             ')';
           if (this.config.shape === 'square') {
-            const size = this.config.size * scale;
+            const size = sizeBase * scale;
             ctx.fillRect(-size / 2, -size / 2, size, size);
           } else {
             ctx.beginPath();
-            ctx.arc(0, 0, Math.max(0.5, (this.config.size * scale) / 2), 0, Math.PI * 2);
+            ctx.arc(0, 0, Math.max(0.5, (sizeBase * scale) / 2), 0, Math.PI * 2);
             ctx.fill();
           }
         }

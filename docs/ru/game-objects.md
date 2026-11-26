@@ -109,7 +109,7 @@ const title = this.add.text(400, 60, 'Chroms', {
 });
 
 title.setOrigin(0.5, 0.5);
-title.setText('Chroms v1.1.1');
+title.setText('Chroms v1.1.2');
 ```
 
 | Ключ стиля | По умолчанию |

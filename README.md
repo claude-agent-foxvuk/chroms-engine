@@ -1,6 +1,8 @@
-# Chroms Engine v1.1.1
+# Chroms Engine v1.1.2
 
-A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable Phaser-like API, and AI agents that need a predictable, documented surface.
+A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable API, and AI agents that need a predictable, documented surface.
+
+The API is **inspired by Phaser 3** — `Scene` subclasses with `preload`/`create`/`update`, an `add` factory, groups, tweens, timers, a camera and AABB physics. The implementation is independent: Phaser is not bundled, required or imported, and Chroms stays Canvas 2D only.
 
 ```html
 <script src="chroms.js"></script>
@@ -50,6 +52,13 @@ v1.0 was a four-class proof of concept. v1.1 is a complete small engine:
 - **Tilemaps** — JSON maps, layers, tinted color tiles or sprite-sheet tiles, per-layer collision, dynamic tile edits.
 - **Persistence & math** — localStorage save manager, seeded RNG, vectors, angle/distance helpers, 30+ easings.
 - **AI support** — `Chroms.describe()` runtime manifest plus [`docs/llms.txt`](docs/llms.txt) and [`docs/api.json`](docs/api.json).
+
+## What changed in 1.1.2
+
+- Fixes: `TileSprite` scroll offset, tween `hold`, colliders leaking across scene switches, per-step collision stats, double camera fades, a duplicated `Body` method.
+- Additions: `camera.panTo()`, `game.setPixelArt()`, `game.toggleFullscreen()`, `group.getByName()`/`getClosest()`, working `anims.pauseAll()`/`resumeAll()`/`stopAll()`, ranged particle `size`.
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
 The demo [`index.html`](index.html) and [`examples/showcase.html`](examples/showcase.html) use shapes only, so they run offline.
 
