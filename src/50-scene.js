@@ -1,3 +1,6 @@
+  const MIN_ZOOM = 0.05;
+  const MAX_ZOOM = 20;
+
   /**
    * 2D camera: follow with lerp/deadzone, bounds, zoom, shake, fade and flash.
    * The engine uses one camera per scene (`scene.camera`).
@@ -27,6 +30,7 @@
       this.visible = true;
       this._fadeTween = null;
       this._panTween = null;
+      this._zoomTween = null;
     }
 
     setBounds(x, y, width, height) {
@@ -51,19 +55,28 @@
       return this.setSize(width, height);
     }
     setZoom(value) {
-      this.zoom = MathUtils.clamp(value, 0.05, 20);
+      this.zoom = MathUtils.clamp(value, MIN_ZOOM, MAX_ZOOM);
       this._clamp();
       return this;
     }
     zoomTo(value, duration, ease) {
+      const target = MathUtils.clamp(value, MIN_ZOOM, MAX_ZOOM);
       if (!this.scene || !this.scene.tweens || !duration) {
-        return this.setZoom(value);
+        return this.setZoom(target);
       }
-      this.scene.tweens.add({
+      if (this._zoomTween) this._zoomTween.stop();
+      this._zoomTween = this.scene.tweens.add({
         targets: this,
-        zoom: value,
+        zoom: target,
         duration,
-        ease: ease || 'sine.inOut'
+        ease: ease || 'sine.inOut',
+        onUpdate: () => {
+          this.zoom = MathUtils.clamp(this.zoom, MIN_ZOOM, MAX_ZOOM);
+        },
+        onComplete: () => {
+          this._zoomTween = null;
+          this.setZoom(target);
+        }
       });
       return this;
     }

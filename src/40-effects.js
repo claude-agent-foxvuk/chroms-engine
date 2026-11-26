@@ -206,10 +206,11 @@
       return this;
     }
     complete() {
-      this.state = 'running';
-      this.direction = 1;
+      this._apply(1);
       this.elapsed = this.duration;
-      this._advance(0.0001);
+      this.state = 'complete';
+      if (this.onComplete) this.onComplete(this);
+      this.manager._remove(this);
       return this;
     }
   }

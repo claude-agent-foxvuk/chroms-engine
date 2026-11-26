@@ -1,7 +1,7 @@
-/*! Chroms Engine v1.1.2 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
+/*! Chroms Engine v1.1.3 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
 /* ---- 00-core.js ---- */
 /**
- * Chroms Engine v1.1.2
+ * Chroms Engine v1.1.3
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
  * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
@@ -12,7 +12,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.1.2';
+  const VERSION = '1.1.3';
   let _uid = 0;
 
   function uid(prefix) {
@@ -1000,15 +1000,17 @@
         }
         if (this._dragging) this._dragMove();
       });
-      on(global, 'pointerup', (e) => {
+      const releasePointer = (e) => {
         if (!this.enabled) return;
-        if (this.pointers.has(e.pointerId)) this.pointers.delete(e.pointerId);
+        if (e && this.pointers.has(e.pointerId)) this.pointers.delete(e.pointerId);
         if (this.pointer.isDown) {
           this.pointer.justUp = true;
           this.pointer.isDown = false;
         }
         if (this._dragging) this._endDrag();
-      });
+      };
+      on(global, 'pointerup', releasePointer);
+      on(global, 'pointercancel', releasePointer);
       on(canvas, 'wheel', (e) => {
         if (!this.enabled) return;
         this.wheelDelta = e.deltaY;
@@ -2018,7 +2020,7 @@
       const dt = (delta || 0) * this.timeScale;
       this.accumulator += dt;
       let steps = 0;
-      const start = Date.now();
+      const start = performance.now();
       while (this.accumulator >= this.fixedStep && steps < this.maxSubSteps) {
         this._integrate(this.fixedStep);
         this.accumulator -= this.fixedStep;
@@ -2027,7 +2029,7 @@
       if (this.accumulator > this.fixedStep * this.maxSubSteps) this.accumulator = 0;
       this._processColliders();
       this.stats.steps = steps;
-      this.stats.time = Date.now() - start;
+      this.stats.time = performance.now() - start;
     }
 
     _integrate(dt) {
@@ -3596,10 +3598,11 @@
       return this;
     }
     complete() {
-      this.state = 'running';
-      this.direction = 1;
+      this._apply(1);
       this.elapsed = this.duration;
-      this._advance(0.0001);
+      this.state = 'complete';
+      if (this.onComplete) this.onComplete(this);
+      this.manager._remove(this);
       return this;
     }
   }
@@ -4244,6 +4247,9 @@
   }
 
 /* ---- 50-scene.js ---- */
+  const MIN_ZOOM = 0.05;
+  const MAX_ZOOM = 20;
+
   /**
    * 2D camera: follow with lerp/deadzone, bounds, zoom, shake, fade and flash.
    * The engine uses one camera per scene (`scene.camera`).
@@ -4273,6 +4279,7 @@
       this.visible = true;
       this._fadeTween = null;
       this._panTween = null;
+      this._zoomTween = null;
     }
 
     setBounds(x, y, width, height) {
@@ -4297,19 +4304,28 @@
       return this.setSize(width, height);
     }
     setZoom(value) {
-      this.zoom = MathUtils.clamp(value, 0.05, 20);
+      this.zoom = MathUtils.clamp(value, MIN_ZOOM, MAX_ZOOM);
       this._clamp();
       return this;
     }
     zoomTo(value, duration, ease) {
+      const target = MathUtils.clamp(value, MIN_ZOOM, MAX_ZOOM);
       if (!this.scene || !this.scene.tweens || !duration) {
-        return this.setZoom(value);
+        return this.setZoom(target);
       }
-      this.scene.tweens.add({
+      if (this._zoomTween) this._zoomTween.stop();
+      this._zoomTween = this.scene.tweens.add({
         targets: this,
-        zoom: value,
+        zoom: target,
         duration,
-        ease: ease || 'sine.inOut'
+        ease: ease || 'sine.inOut',
+        onUpdate: () => {
+          this.zoom = MathUtils.clamp(this.zoom, MIN_ZOOM, MAX_ZOOM);
+        },
+        onComplete: () => {
+          this._zoomTween = null;
+          this.setZoom(target);
+        }
       });
       return this;
     }
@@ -5039,6 +5055,7 @@
       this.timeScale = cfg.timeScale === undefined ? 1 : cfg.timeScale;
       this.pauseOnHidden = cfg.pauseOnHidden !== false;
       this.antialias = cfg.antialias !== false;
+      this.catchErrors = cfg.catchErrors !== false;
       this.debugKey = cfg.debugKey === undefined ? 'Backquote' : cfg.debugKey;
 
       this.parent =
@@ -5100,6 +5117,11 @@
       this.fps = 0;
       this.frameCount = 0;
       this.transition = { alpha: 0, color: '#000000' };
+      this.lastError = null;
+      this.errorOverlay = Object.assign(
+        { show: true, title: 'Chroms error' },
+        cfg.errorOverlay || {}
+      );
       this.loadingStyle = Object.assign(
         {
           text: 'Loading...',
@@ -5396,37 +5418,55 @@
       this._raf = requestAnimationFrame((time) => this._loop(time));
       const rawDt = Math.min((timestamp - this._lastTime) / 1000, this.maxDelta) || 0;
       this._lastTime = timestamp;
-      this.delta = rawDt * this.timeScale;
-      this.elapsed += this.delta;
-      this.frameCount += 1;
+      this._advance(rawDt * this.timeScale);
+      this._updateFps(rawDt);
+    }
 
+    /**
+     * Advance by `dt` seconds without requestAnimationFrame. Defaults to
+     * `game.fixedStep`. Use it for tests, replays and turn-based play.
+     * `dt` is not clamped by `maxDelta`.
+     */
+    step(dt) {
+      const seconds = dt === undefined ? this.fixedStep : dt;
+      return this._advance(Math.max(0, seconds) * this.timeScale);
+    }
+
+    _advance(delta) {
+      this.delta = delta;
+      this.elapsed += delta;
+      this.frameCount += 1;
       if (this.debugKey && this.input.isJustDown(this.debugKey)) {
         this.debug.toggle();
         this.events.emit('debug-toggle', this.debug.enabled);
       }
-
       this.input.update();
-      this.sound.update(this.delta);
-
+      this.sound.update(delta);
       if (!this.paused) {
-        if (document.hidden && this.pauseOnHidden) {
-          /* skip simulation while hidden */
-        } else {
-          const scene = this.currentScene;
-          if (scene && scene.status === 'running') {
-            scene._update(this.delta);
-            this.physics.step(this.delta);
-          }
-          this.tweens.update(this.delta);
-          this.time.update(this.delta);
-          this.events.emit('preupdate', this.delta);
-          this.events.emit('postupdate', this.delta);
+        try {
+          this._simulate(delta);
+        } catch (error) {
+          this._handleError(error, 'update');
         }
       }
-
       this.render();
       this.input.clearFrameState();
-      this._updateFps(rawDt);
+      return this;
+    }
+
+    _simulate(delta) {
+      if (!(document.hidden && this.pauseOnHidden)) {
+        const scene = this.currentScene;
+        if (scene && scene.status === 'running') {
+          scene._update(delta);
+          this.physics.step(delta);
+        }
+      }
+      this.tweens.update(delta);
+      this.time.update(delta);
+      this.events.emit('preupdate', delta);
+      this.events.emit('postupdate', delta);
+      return this;
     }
 
     _updateFps(rawDt) {
@@ -5440,6 +5480,22 @@
     }
 
     render() {
+      try {
+        this._renderFrame();
+      } catch (error) {
+        this._handleError(error, 'render');
+      }
+      if (this.lastError) {
+        try {
+          this._drawErrorOverlay(this.ctx);
+        } catch (error) {
+          /* the canvas itself may be unusable */
+        }
+      }
+      return this;
+    }
+
+    _renderFrame() {
       const ctx = this.ctx;
       const ratio = this.pixelRatio;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -5530,6 +5586,94 @@
         ctx.fill();
       }
       ctx.restore();
+    }
+
+    /**
+     * Record an exception from update()/render(), log it once, emit `error`
+     * and pause so the overlay stays readable. `catchErrors: false` rethrows.
+     */
+    _handleError(error, phase) {
+      if (this.catchErrors === false) throw error;
+      const name = phase || 'update';
+      const message = error && error.message ? error.message : String(error);
+      if (this.lastError && this.lastError.message === message) return this;
+      this.lastError = {
+        message,
+        stack: error && error.stack ? String(error.stack) : '',
+        phase: name,
+        frame: this.frameCount,
+        time: this.elapsed
+      };
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('[Chroms] ' + name + ' failed:', error);
+      }
+      this.events.emit('error', error, name);
+      if (!this.paused) this.pause();
+      return this;
+    }
+
+    /** Dismiss the error overlay reported by an earlier frame. */
+    clearError() {
+      this.lastError = null;
+      return this;
+    }
+
+    _drawErrorOverlay(ctx) {
+      if (!this.errorOverlay.show || !this.lastError) return this;
+      const padding = 24;
+      const width = Math.min(640, this.width - padding * 2);
+      const x = (this.width - width) / 2;
+      const top = this.height / 2 - 92;
+      ctx.save();
+      ctx.fillStyle = 'rgba(17,17,27,0.88)';
+      ctx.fillRect(0, 0, this.width, this.height);
+      ctx.fillStyle = 'rgba(49,50,68,0.96)';
+      ctx.fillRect(x, top, width, 184);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = '#f38ba8';
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText(this.errorOverlay.title, x + padding, top + 20);
+      ctx.fillStyle = '#f9e2af';
+      ctx.font = '12px monospace';
+      ctx.fillText(
+        this.lastError.phase + '  •  frame ' + this.lastError.frame,
+        x + padding,
+        top + 48
+      );
+      ctx.fillStyle = '#cdd6f4';
+      ctx.font = '14px monospace';
+      this._wrapLines(ctx, this.lastError.message, width - padding * 2, 4).forEach(
+        (line, index) => {
+          ctx.fillText(line, x + padding, top + 74 + index * 20);
+        }
+      );
+      ctx.fillStyle = '#6c7086';
+      ctx.font = '12px monospace';
+      ctx.fillText('game.clearError() dismisses this overlay', x + padding, top + 158);
+      ctx.restore();
+      return this;
+    }
+
+    _wrapLines(ctx, text, maxWidth, maxLines) {
+      const words = String(text).split(/\s+/).filter(Boolean);
+      const lines = [];
+      let line = '';
+      words.forEach((word) => {
+        const test = line ? line + ' ' + word : word;
+        if (line && ctx.measureText(test).width > maxWidth) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = test;
+        }
+      });
+      if (line) lines.push(line);
+      if (maxLines && lines.length > maxLines) {
+        lines.length = maxLines;
+        lines[maxLines - 1] += ' …';
+      }
+      return lines;
     }
 
     resize() {
@@ -5674,6 +5818,12 @@
           'scene.sound.play(key), musicPlay(key, { fade }), beep({ frequency }), mute/toggleMute',
         tilemap:
           'scene.add.tilemap(jsonOrKey) with layers, tileset, solid; physics.collideTilemap(object, map)'
+      },
+      debugging: {
+        step: 'game.step(dt?) advances one frame without requestAnimationFrame (tests, replays, turn-based)',
+        errorOverlay:
+          'an exception from update() or render() is logged once, emitted as game.events "error", drawn over the canvas and pauses the game; game.clearError() dismisses it, catchErrors: false rethrows',
+        overlay: 'Backquote toggles the FPS/body debug overlay'
       },
       gotchas: [
         'Physics is AABB only; rotated sprites use their unrotated box.',

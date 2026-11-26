@@ -1,4 +1,4 @@
-# Chroms Engine v1.1.2 — документация
+# Chroms Engine v1.1.3 — документация
 
 Chroms — 2D-движок для браузера без зависимостей. Рисует через Canvas 2D, поставляется одним файлом `chroms.js`, а игровая логика живёт в подклассах `Chroms.Scene`.
 
@@ -119,6 +119,8 @@ English (primary): [`../en/index.md`](../en/index.md).
 
 **Инструменты** — `Chroms.describe()`, `docs/llms.txt`, `docs/api.json`, headless-смоук-тест, браузерный showcase.
 
+**Новое в 1.1.3** — `game.step(dt?)` для ручных кадров, оверлей ошибок времени выполнения (`game.lastError`, `game.clearError()`, `game.events.on('error')`, `catchErrors: false`), кламп зума в `camera.zoomTo()` и обработка `pointercancel`.
+
 **Новое в 1.1.2** — `camera.panTo(x, y, ms, ease?)`, `game.setPixelArt(bool)`, `game.toggleFullscreen()`, `group.getByName(name)`, `group.getClosest(x, y, aliveOnly?)`, `anims.pauseAll/resumeAll/stopAll`, размер частиц диапазоном `{ min, max }`.
 
 ## Совместимость и ограничения
@@ -131,4 +133,4 @@ English (primary): [`../en/index.md`](../en/index.md).
 - Логика и рендер в одном потоке, без воркеров.
 - Переключение сцены уничтожает объекты, твины и таймеры предыдущей сцены.
 
-Версия: **1.1.2** (`Chroms.version`, `Chroms.VERSION`).
+Версия: **1.1.3** (`Chroms.version`, `Chroms.VERSION`).

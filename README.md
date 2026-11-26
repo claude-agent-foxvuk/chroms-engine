@@ -1,4 +1,4 @@
-# Chroms Engine v1.1.2
+# Chroms Engine v1.1.3
 
 A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable API, and AI agents that need a predictable, documented surface.
 
@@ -52,6 +52,14 @@ v1.0 was a four-class proof of concept. v1.1 is a complete small engine:
 - **Tilemaps** — JSON maps, layers, tinted color tiles or sprite-sheet tiles, per-layer collision, dynamic tile edits.
 - **Persistence & math** — localStorage save manager, seeded RNG, vectors, angle/distance helpers, 30+ easings.
 - **AI support** — `Chroms.describe()` runtime manifest plus [`docs/llms.txt`](docs/llms.txt) and [`docs/api.json`](docs/api.json).
+
+## What changed in 1.1.3
+
+- `game.step(dt?)` advances one frame by hand, outside `requestAnimationFrame` — for tests, replays and turn-based play.
+- Runtime error overlay: an exception in `update()`/`render()` is caught, logged once, emitted as `game.events.on('error')`, drawn over the canvas and pauses the game. `game.clearError()` dismisses it; `catchErrors: false` rethrows.
+- Fixes: `camera.zoomTo()` clamps the zoom, `tween.complete()` finishes yoyo tweens, `physics.stats.time` uses `performance.now()`, `pointercancel` releases the pointer and any drag.
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## What changed in 1.1.2
 

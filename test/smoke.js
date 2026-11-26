@@ -163,7 +163,7 @@ global.localStorage = (() => {
 })();
 
 const Chroms = require(path.join(__dirname, '..', 'chroms.js'));
-assert.strictEqual(Chroms.version, '1.1.2');
+assert.strictEqual(Chroms.version, '1.1.3');
 assert.ok(Chroms.describe().systems.physics.includes('AABB'));
 
 const parent = createElement('div');
@@ -392,7 +392,7 @@ assert.ok(sceneRef.scoreText.text.length > 0, 'typewriter should reveal text');
 
 assert.ok(game.screenshot().startsWith('data:image/png'));
 
-// --- 1.1.2 regressions ---
+// --- 1.1.3 regressions ---
 
 // A hold keeps the end value before a yoyo leg starts.
 const holder = { value: 0 };
@@ -475,6 +475,54 @@ const manifest = Chroms.describe();
 assert.ok(manifest.inspiration.indexOf('Phaser 3') !== -1, 'manifest should credit Phaser 3');
 assert.ok(manifest.systems.add.indexOf('animatedSprite') !== -1, 'manifest should list animatedSprite');
 
+// --- 1.1.3 regressions ---
+
+// Manual stepping advances one frame without requestAnimationFrame.
+const updatesBeforeStep = sceneRef.updateCount;
+const elapsedBeforeStep = game.elapsed;
+game.step(0.5);
+assert.strictEqual(sceneRef.updateCount, updatesBeforeStep + 1, 'game.step should update once');
+assert.ok(
+  Math.abs(game.elapsed - (elapsedBeforeStep + 0.5 * game.timeScale)) < 1e-9,
+  'game.step should advance the clock'
+);
+assert.ok(game.physics.stats.pairs > 0, 'stats.pairs should count pairs in the last step');
+assert.ok(Number.isFinite(game.physics.stats.time), 'stats.time should be a finite number');
+
+// zoomTo clamps the zoom so worldView never divides by zero.
+sceneRef.camera.zoomTo(0.0001, 100);
+sceneRef.tweens.update(0.2);
+assert.ok(sceneRef.camera.zoom >= 0.05, 'zoomTo should clamp the zoom');
+assert.ok(Number.isFinite(sceneRef.camera.worldView.width), 'worldView should stay finite');
+sceneRef.camera.setZoom(1);
+
+// complete() finishes a yoyo tween instead of starting the return leg.
+const completed = { value: 0 };
+const yoyoTween = sceneRef.tweens.add({
+  targets: completed,
+  value: 50,
+  duration: 100,
+  yoyo: true,
+  repeat: 2
+});
+yoyoTween.complete();
+assert.strictEqual(completed.value, 50, 'complete() should apply the end value');
+assert.strictEqual(yoyoTween.state, 'complete', 'complete() should finish the tween');
+assert.strictEqual(
+  sceneRef.tweens.tweens.indexOf(yoyoTween),
+  -1,
+  'complete() should unregister the tween'
+);
+
+// A cancelled pointer must not leave input stuck.
+sceneRef.input.pointers.set(9, { x: 0, y: 0, isDown: true });
+sceneRef.input.pointer.isDown = true;
+const cancelHandlers = listenerMap.pointercancel || [];
+assert.ok(cancelHandlers.length > 0, 'pointercancel should be listened for');
+cancelHandlers.forEach((handler) => handler({ pointerId: 9 }));
+assert.strictEqual(sceneRef.input.pointers.has(9), false, 'pointercancel clears the pointer');
+assert.strictEqual(sceneRef.input.pointer.isDown, false, 'pointercancel releases the pointer');
+
 // Scene switching + cleanup.
 class SecondScene extends Chroms.Scene {
   constructor() {
@@ -499,6 +547,45 @@ game.startScene('test');
 assert.ok(game.currentScene.created === undefined || game.currentScene.created === true);
 assert.ok(game.currentScene.children.length > 0, 'scene should rebuild');
 frames(5, 16.67);
+
+// An uncaught update error pauses the game and draws an overlay.
+class BrokenScene extends Chroms.Scene {
+  constructor() {
+    super('broken');
+  }
+  create() {
+    this.add.text(0, 0, 'broken');
+  }
+  update() {
+    throw new Error('boom');
+  }
+}
+const brokenGame = new Chroms.Game({
+  width: 320,
+  height: 240,
+  parent,
+  scene: [BrokenScene],
+  autoStart: false,
+  scaleMode: 'none',
+  debug: false
+});
+const caughtErrors = [];
+brokenGame.events.on('error', (error, phase) => caughtErrors.push({ error, phase }));
+const realConsoleError = console.error;
+console.error = () => {}; // the engine logs the caught error once; keep test output clean
+brokenGame.step();
+console.error = realConsoleError;
+assert.ok(brokenGame.lastError, 'the error should be recorded');
+assert.strictEqual(brokenGame.lastError.message, 'boom');
+assert.strictEqual(brokenGame.lastError.phase, 'update');
+assert.strictEqual(brokenGame.paused, true, 'a caught error should pause the game');
+assert.strictEqual(caughtErrors.length, 1, 'the error should be emitted once');
+assert.strictEqual(caughtErrors[0].phase, 'update');
+brokenGame.step();
+assert.strictEqual(caughtErrors.length, 1, 'the same error should not be re-emitted');
+brokenGame.clearError();
+assert.strictEqual(brokenGame.lastError, null, 'clearError should dismiss the overlay');
+brokenGame.destroy();
 
 game.destroy();
 assert.ok(!game.running);

@@ -2,6 +2,31 @@
 
 All notable changes to Chroms. The project follows semantic versioning.
 
+## [1.1.3] — 2026-11-26
+
+Small bug-fix release with manual stepping and a runtime error overlay.
+
+### Added
+
+- `game.step(dt?)` advances one frame (default `game.fixedStep`) outside `requestAnimationFrame`, so tests, replays, turn-based games and headless harnesses can drive the loop deterministically. `dt` is not clamped by `maxDelta`.
+- Runtime error overlay: an exception thrown from `update()` or `render()` is caught, logged once, emitted as `game.events.on('error', (error, phase))`, drawn over the canvas and pauses the game. `game.lastError` holds message, stack, phase, frame and time; `game.clearError()` dismisses the overlay. Configure with `errorOverlay` (`{ show, title }`) or disable catching with `catchErrors: false`.
+
+### Fixed
+
+- `camera.zoomTo()` tweened `zoom` without its limits, so a small or negative target produced an infinite `worldView`. Zoom is now clamped to 0.05–20 while tweening and on completion, and a running zoom tween is stopped before a new one starts.
+- `physics.stats.time` measured with `Date.now()` instead of `performance.now()`.
+- `tween.complete()` on a yoyo tween started the return leg instead of finishing: it now applies the end value, fires `onComplete` and unregisters itself.
+- A `pointercancel` (touch interrupted by the system, finger leaving the surface) left `input.pointer.isDown` stuck and kept drag state alive; `pointerup` and `pointercancel` now share one release path.
+
+### Docs
+
+- Version 1.1.3 across the README, API manifest, llms.txt, changelog and demos.
+- Documented `game.step`, the error overlay, `errorOverlay` and `catchErrors`.
+
+### Tests
+
+- Regression coverage for `game.step`, zoom clamping, yoyo `complete()`, `pointercancel` and the paused error overlay.
+
 ## [1.1.2] — 2026-11-26
 
 A bug-fix release with a small set of additions. Nothing in 1.1.1 is removed.

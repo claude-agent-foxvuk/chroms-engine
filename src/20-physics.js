@@ -582,7 +582,7 @@
       const dt = (delta || 0) * this.timeScale;
       this.accumulator += dt;
       let steps = 0;
-      const start = Date.now();
+      const start = performance.now();
       while (this.accumulator >= this.fixedStep && steps < this.maxSubSteps) {
         this._integrate(this.fixedStep);
         this.accumulator -= this.fixedStep;
@@ -591,7 +591,7 @@
       if (this.accumulator > this.fixedStep * this.maxSubSteps) this.accumulator = 0;
       this._processColliders();
       this.stats.steps = steps;
-      this.stats.time = Date.now() - start;
+      this.stats.time = performance.now() - start;
     }
 
     _integrate(dt) {

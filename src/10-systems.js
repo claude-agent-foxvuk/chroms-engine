@@ -399,15 +399,17 @@
         }
         if (this._dragging) this._dragMove();
       });
-      on(global, 'pointerup', (e) => {
+      const releasePointer = (e) => {
         if (!this.enabled) return;
-        if (this.pointers.has(e.pointerId)) this.pointers.delete(e.pointerId);
+        if (e && this.pointers.has(e.pointerId)) this.pointers.delete(e.pointerId);
         if (this.pointer.isDown) {
           this.pointer.justUp = true;
           this.pointer.isDown = false;
         }
         if (this._dragging) this._endDrag();
-      });
+      };
+      on(global, 'pointerup', releasePointer);
+      on(global, 'pointercancel', releasePointer);
       on(canvas, 'wheel', (e) => {
         if (!this.enabled) return;
         this.wheelDelta = e.deltaY;

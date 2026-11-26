@@ -1,4 +1,4 @@
-# Chroms Engine v1.1.2 — LLM quick reference
+# Chroms Engine v1.1.3 — LLM quick reference
 
 Chroms is a dependency-free Canvas 2D game engine for browsers. Single file: chroms.js.
 API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent implementation.
@@ -232,6 +232,10 @@ scene.start(key, data?, { fade, fadeColor }), restart(), stop(), pause(), resume
 game.startScene(key, data?, options), stopScene(key?), pauseScene, resumeScene,
 sleepScene, wakeScene, pause/resume/togglePause, setTimeScale, screenshot, use(plugin),
 setPixelArt(bool), toggleFullscreen(), describe(), destroy().
+game.step(dt?) advances one frame by hand (seconds, default fixedStep) - no rAF needed.
+Errors from update()/render() are caught and drawn on the canvas: game.lastError,
+game.clearError(), game.events.on('error', (err, phase)), catchErrors: false rethrows.
+The caught error pauses the game; call game.resume() after fixing.
 Game events: ready, start, stop, pause, resume, preupdate, postupdate, scene-added,
 scene-start, scene-create, scene-stop, scene-load-progress, load-start/progress/complete,
 debug-toggle, visibility, resize, plugin-install, destroy.
