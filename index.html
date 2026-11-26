@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Игра на движке Chroms</title>
+  <style>
+    body { margin: 0; background: #11111b; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    canvas { border: 2px solid #313244; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <script src="chroms.js"></script>
+  <script>
+    class PlayScene extends Chroms.Scene {
+      constructor() {
+        super('PlayScene');
+      }
+
+      preload() {
+        // Сюда можно загружать свои картинки:
+        // this.load.image('hero', 'assets/hero.png');
+      }
+
+      create() {
+        this.score = 0;
+
+        // Создаём игрока (если ключ 'hero' не загружен, нарисует синий квадрат)
+        this.player = this.add.sprite(380, 280, 40, 40, '#89b4fa');
+        
+        // Создаём цель
+        this.target = this.add.sprite(200, 150, 25, 25, '#f9e2af');
+
+        // Добавляем текст счёта
+        this.scoreText = this.add.text(20, 35, 'Chroms Score: 0', {
+          font: 'bold 22px sans-serif',
+          color: '#cdd6f4'
+        });
+      }
+
+      update(dt) {
+        const speed = 320;
+        let vx = 0;
+        let vy = 0;
+
+        if (this.input.isDown('ArrowLeft') || this.input.isDown('KeyA')) vx = -speed;
+        if (this.input.isDown('ArrowRight') || this.input.isDown('KeyD')) vx = speed;
+        if (this.input.isDown('ArrowUp') || this.input.isDown('KeyW')) vy = -speed;
+        if (this.input.isDown('ArrowDown') || this.input.isDown('KeyS')) vy = speed;
+
+        this.player.setVelocity(vx, vy);
+
+        // Проверка столкновения
+        if (this.physics.overlap(this.player, this.target)) {
+          this.score += 10;
+          this.scoreText.setText(`Chroms Score: ${this.score}`);
+          this.target.x = Math.random() * (this.game.width - 40);
+          this.target.y = Math.random() * (this.game.height - 40);
+        }
+      }
+    }
+
+    // Запуск игры на движке Chroms
+    const game = new Chroms.Game({
+      width: 800,
+      height: 600,
+      backgroundColor: '#1e1e2e',
+      scene: [PlayScene]
+    });
+  </script>
+</body>
+</html>
