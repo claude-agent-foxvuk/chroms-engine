@@ -2,6 +2,19 @@
 
 All notable changes to Chroms. The project follows semantic versioning.
 
+## [1.1.1] — 2026-11-26
+
+### Fixed
+
+- Yoyo animations now finish after the return leg instead of looping forever, so `repeat: 0` completes and repeat counts work.
+- The audio loader no longer reports progress twice when both `loadeddata` and `canplaythrough` fire for the same asset.
+- Scene event listeners are removed when a scene is cleaned up, preventing duplicate handlers after `restart()` or repeated `startScene()` calls.
+- Plugins from the game config are installed before the first scene is created, so `create()` can use them.
+
+### Tests
+
+- Added regression coverage for yoyo animation completion, plugin install order and scene-listener cleanup.
+
 ## [1.1.0] — 2026-11-26
 
 This release turns the v1.0 prototype into a complete small engine. The v1.0 API (`Game`, `Scene`, `add.sprite`, `add.text`, `physics.overlap`) continues to work.

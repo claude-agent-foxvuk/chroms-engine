@@ -1,6 +1,6 @@
 {
   "name": "chroms",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Chroms 2D browser game engine for humans and AI agents",
   "main": "chroms.js",
   "scripts": {

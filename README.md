@@ -1,4 +1,4 @@
-# Chroms Engine v1.1
+# Chroms Engine v1.1.1
 
 A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable Phaser-like API, and AI agents that need a predictable, documented surface.
 

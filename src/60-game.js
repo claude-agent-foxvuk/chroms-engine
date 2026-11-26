@@ -112,6 +112,8 @@
       this._registerLifecycle();
       this.resize();
 
+      (cfg.plugins || []).forEach((plugin) => this.use(plugin));
+
       const scenes = cfg.scenes || cfg.scene;
       if (scenes) {
         (Array.isArray(scenes) ? scenes : [scenes]).forEach((SceneClass) =>
@@ -120,8 +122,6 @@
         const startKey = cfg.startScene || (this.sceneOrder.length ? this.sceneOrder[0] : null);
         if (startKey) this.startScene(startKey);
       }
-
-      (cfg.plugins || []).forEach((plugin) => this.use(plugin));
 
       const onGesture = () => this.sound.unlock();
       document.addEventListener('pointerdown', onGesture);
@@ -275,6 +275,7 @@
       if (scene.time) scene.time.clear();
       this.physics.removeScene(scene);
       scene.events.emit('cleanup');
+      scene.events.removeAllListeners();
     }
     pauseScene(key) {
       const scene = key ? this.scenes[key] : this.currentScene;

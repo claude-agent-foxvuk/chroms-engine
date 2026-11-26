@@ -277,17 +277,20 @@
         } else if (item.type === 'audio') {
           const audio = new Audio();
           audio.preload = 'auto';
-          audio.addEventListener('canplaythrough', () => {
+          let settled = false;
+          const finishAudio = () => {
+            if (settled) return;
+            settled = true;
             this.audios[item.key] = audio;
             tick(item);
+          };
+          audio.addEventListener('canplaythrough', finishAudio);
+          audio.addEventListener('loadeddata', finishAudio);
+          audio.addEventListener('error', () => {
+            if (settled) return;
+            settled = true;
+            fail(new Error('Audio failed: ' + item.url));
           });
-          audio.addEventListener('loadeddata', () => {
-            if (!this.audios[item.key]) {
-              this.audios[item.key] = audio;
-              tick(item);
-            }
-          });
-          audio.addEventListener('error', fail);
           audio.src = item.url;
           audio.load();
         } else if (item.type === 'json') {

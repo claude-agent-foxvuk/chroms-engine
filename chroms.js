@@ -1,7 +1,7 @@
-/*! Chroms Engine v1.1.0 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
+/*! Chroms Engine v1.1.1 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
 /* ---- 00-core.js ---- */
 /**
- * Chroms Engine v1.1.0
+ * Chroms Engine v1.1.1
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  *
  * This file is part of the source bundle in src/. The distributable is chroms.js,
@@ -10,7 +10,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
   let _uid = 0;
 
   function uid(prefix) {
@@ -876,17 +876,20 @@
         } else if (item.type === 'audio') {
           const audio = new Audio();
           audio.preload = 'auto';
-          audio.addEventListener('canplaythrough', () => {
+          let settled = false;
+          const finishAudio = () => {
+            if (settled) return;
+            settled = true;
             this.audios[item.key] = audio;
             tick(item);
+          };
+          audio.addEventListener('canplaythrough', finishAudio);
+          audio.addEventListener('loadeddata', finishAudio);
+          audio.addEventListener('error', () => {
+            if (settled) return;
+            settled = true;
+            fail(new Error('Audio failed: ' + item.url));
           });
-          audio.addEventListener('loadeddata', () => {
-            if (!this.audios[item.key]) {
-              this.audios[item.key] = audio;
-              tick(item);
-            }
-          });
-          audio.addEventListener('error', fail);
           audio.src = item.url;
           audio.load();
         } else if (item.type === 'json') {
@@ -2565,20 +2568,27 @@
     }
 
     _advanceAnimation(anim) {
-      let next = anim.current + anim.direction;
       const last = anim.frames.length - 1;
+      let next = anim.current + anim.direction;
       if (next > last || next < 0) {
-        if (anim.yoyo) {
-          anim.direction *= -1;
+        if (anim.yoyo && anim.direction === -1) {
+          // The return leg reached the first frame; only repeat or finish.
+          if (anim.repeat === -1 || anim.repeatCount < anim.repeat) {
+            if (anim.repeat !== -1) anim.repeatCount += 1;
+            anim.direction = 1;
+            next = last > 0 ? 1 : 0;
+          } else {
+            this._finishAnimation(anim);
+            return;
+          }
+        } else if (anim.yoyo) {
+          anim.direction = -1;
           next = anim.current + anim.direction;
         } else if (anim.repeat === -1 || anim.repeatCount < anim.repeat) {
           if (anim.repeat !== -1) anim.repeatCount += 1;
           next = 0;
         } else {
-          anim.playing = false;
-          this.frame = anim.frames[anim.current];
-          if (anim.onComplete) anim.onComplete(this, anim);
-          this.events.emit('animationcomplete', anim.key, this);
+          this._finishAnimation(anim);
           return;
         }
       }
@@ -2586,6 +2596,13 @@
       this.frame = anim.frames[anim.current];
       if (anim.onFrame) anim.onFrame(this, this.frame, anim.current);
       this.events.emit('animationframe', this.frame, anim.current);
+    }
+
+    _finishAnimation(anim) {
+      anim.playing = false;
+      this.frame = anim.frames[anim.current];
+      if (anim.onComplete) anim.onComplete(this, anim);
+      this.events.emit('animationcomplete', anim.key, this);
     }
 
     _resolveFrame() {
@@ -5045,6 +5062,8 @@
       this._registerLifecycle();
       this.resize();
 
+      (cfg.plugins || []).forEach((plugin) => this.use(plugin));
+
       const scenes = cfg.scenes || cfg.scene;
       if (scenes) {
         (Array.isArray(scenes) ? scenes : [scenes]).forEach((SceneClass) =>
@@ -5053,8 +5072,6 @@
         const startKey = cfg.startScene || (this.sceneOrder.length ? this.sceneOrder[0] : null);
         if (startKey) this.startScene(startKey);
       }
-
-      (cfg.plugins || []).forEach((plugin) => this.use(plugin));
 
       const onGesture = () => this.sound.unlock();
       document.addEventListener('pointerdown', onGesture);
@@ -5208,6 +5225,7 @@
       if (scene.time) scene.time.clear();
       this.physics.removeScene(scene);
       scene.events.emit('cleanup');
+      scene.events.removeAllListeners();
     }
     pauseScene(key) {
       const scene = key ? this.scenes[key] : this.currentScene;

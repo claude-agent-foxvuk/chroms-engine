@@ -1,4 +1,4 @@
-# Chroms Engine v1.1 — documentation
+# Chroms Engine v1.1.1 — documentation
 
 Chroms is a dependency-free 2D engine for the browser. It draws with Canvas 2D, ships as a single `chroms.js`, and keeps gameplay code in `Scene` subclasses with a Phaser-like shape. The API is documented for humans first, and the repository also ships machine-readable material for AI agents: [`llms.txt`](../llms.txt), [`api.json`](../api.json) and the runtime `Chroms.describe()` manifest.
 
@@ -131,4 +131,4 @@ Chroms targets current evergreen browsers. It deliberately stays small:
 
 ## Version
 
-Current version: **1.1.0**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.
+Current version: **1.1.1**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.

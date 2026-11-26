@@ -369,20 +369,27 @@
     }
 
     _advanceAnimation(anim) {
-      let next = anim.current + anim.direction;
       const last = anim.frames.length - 1;
+      let next = anim.current + anim.direction;
       if (next > last || next < 0) {
-        if (anim.yoyo) {
-          anim.direction *= -1;
+        if (anim.yoyo && anim.direction === -1) {
+          // The return leg reached the first frame; only repeat or finish.
+          if (anim.repeat === -1 || anim.repeatCount < anim.repeat) {
+            if (anim.repeat !== -1) anim.repeatCount += 1;
+            anim.direction = 1;
+            next = last > 0 ? 1 : 0;
+          } else {
+            this._finishAnimation(anim);
+            return;
+          }
+        } else if (anim.yoyo) {
+          anim.direction = -1;
           next = anim.current + anim.direction;
         } else if (anim.repeat === -1 || anim.repeatCount < anim.repeat) {
           if (anim.repeat !== -1) anim.repeatCount += 1;
           next = 0;
         } else {
-          anim.playing = false;
-          this.frame = anim.frames[anim.current];
-          if (anim.onComplete) anim.onComplete(this, anim);
-          this.events.emit('animationcomplete', anim.key, this);
+          this._finishAnimation(anim);
           return;
         }
       }
@@ -390,6 +397,13 @@
       this.frame = anim.frames[anim.current];
       if (anim.onFrame) anim.onFrame(this, this.frame, anim.current);
       this.events.emit('animationframe', this.frame, anim.current);
+    }
+
+    _finishAnimation(anim) {
+      anim.playing = false;
+      this.frame = anim.frames[anim.current];
+      if (anim.onComplete) anim.onComplete(this, anim);
+      this.events.emit('animationcomplete', anim.key, this);
     }
 
     _resolveFrame() {

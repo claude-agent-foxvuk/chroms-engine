@@ -1,4 +1,4 @@
-# Chroms Engine v1.1 — LLM quick reference
+# Chroms Engine v1.1.1 — LLM quick reference
 
 Chroms is a dependency-free Canvas 2D game engine for browsers. Single file: chroms.js.
 Global: window.Chroms. Classic script: no imports, no JSX, no TypeScript, no bundler.

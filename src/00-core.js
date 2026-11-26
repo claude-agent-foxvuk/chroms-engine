@@ -1,5 +1,5 @@
 /**
- * Chroms Engine v1.1.0
+ * Chroms Engine v1.1.1
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  *
  * This file is part of the source bundle in src/. The distributable is chroms.js,
@@ -8,7 +8,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
   let _uid = 0;
 
   function uid(prefix) {

@@ -163,7 +163,7 @@ global.localStorage = (() => {
 })();
 
 const Chroms = require(path.join(__dirname, '..', 'chroms.js'));
-assert.strictEqual(Chroms.version, '1.1.0');
+assert.strictEqual(Chroms.version, '1.1.1');
 assert.ok(Chroms.describe().systems.physics.includes('AABB'));
 
 const parent = createElement('div');
@@ -176,6 +176,7 @@ class TestScene extends Chroms.Scene {
   create() {
     sceneRef = this;
     this.created = true;
+    this.sawPlugin = this.game.pluginReady === true;
     this.scoreText = this.add.text(10, 10, 'Score: 0', {
       font: 'bold 22px sans-serif',
       color: '#cdd6f4',
@@ -269,6 +270,7 @@ const game = new Chroms.Game({
   height: 600,
   parent,
   scene: [TestScene],
+  plugins: [(g) => { g.pluginReady = true; }],
   debug: false,
   autoStart: false,
   scaleMode: 'none',
@@ -276,6 +278,7 @@ const game = new Chroms.Game({
 });
 
 assert.ok(game.currentScene, 'scene should start');
+assert.ok(game.currentScene.sawPlugin, 'plugins should install before the first scene');
 assert.strictEqual(game.currentScene.key, 'test');
 assert.ok(game.currentScene.created, 'create() should run after preload');
 assert.ok(sceneRef.scoreText.width > 0, 'text should measure');
@@ -357,6 +360,19 @@ const firstFrame = sceneRef.player.frame;
 frames(10, 50);
 assert.notStrictEqual(sceneRef.player.frame, firstFrame);
 
+// A yoyo animation without repeats must finish on its return leg.
+sceneRef.anims.create({
+  key: 'yoyo-once',
+  frames: [0, 1, 2],
+  frameRate: 10,
+  yoyo: true,
+  repeat: 0
+});
+const yoyo = sceneRef.add.sprite(10, 10, 10, 10, '#ffffff');
+yoyo.play('yoyo-once');
+for (let i = 0; i < 20; i += 1) yoyo.update(0.1);
+assert.strictEqual(yoyo.isPlaying(), false, 'yoyo animation should complete');
+
 // Storage.
 game.storage.save('slot', { score: 42 });
 assert.deepStrictEqual(game.storage.load('slot'), { score: 42 });
@@ -380,10 +396,12 @@ class SecondScene extends Chroms.Scene {
     this.add.text(0, 0, 'second');
   }
 }
+sceneRef.events.on('custom-event', () => {});
 game.addScene(SecondScene);
 game.startScene('second');
 assert.strictEqual(game.currentScene.key, 'second');
 assert.strictEqual(sceneRef.children.length, 0, 'old scene should be cleaned');
+assert.strictEqual(sceneRef.events.listenerCount('custom-event'), 0, 'scene listeners should be cleared');
 
 const bodiesAfterSwitch = game.physics.bodies.length;
 assert.strictEqual(bodiesAfterSwitch, 0, 'old scene bodies removed');
