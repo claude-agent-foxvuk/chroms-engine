@@ -43,7 +43,7 @@ this.tweens.add({
 | `hold` | `0` | Пауза в крайних точках, мс |
 | `paused` | `false` | Создать на паузе |
 | `persist` | `false` | Не останавливать при уничтожении цели |
-| `onStart`, `onUpdate`, `onYoyo`, `onRepeat`, `onComplete` | — | Колбэки |
+| `onStart`, `onUpdate`, `onYoyo`, `onRepeat`, `onComplete`, `onStop` | — | Колбэки; `onStop` вызывается при `tween.stop()`, а `onComplete` — нет |
 
 ```js
 this.tweens.add({

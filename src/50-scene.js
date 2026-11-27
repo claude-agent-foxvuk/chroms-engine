@@ -76,6 +76,9 @@
         onComplete: () => {
           this._zoomTween = null;
           this.setZoom(target);
+        },
+        onStop: () => {
+          this._zoomTween = null;
         }
       });
       return this;
@@ -91,6 +94,9 @@
         duration,
         ease: ease || 'sine.inOut',
         onComplete: () => {
+          this._panTween = null;
+        },
+        onStop: () => {
           this._panTween = null;
         }
       });
@@ -177,7 +183,11 @@
         fadeAlpha: 1,
         duration: duration === undefined ? 500 : duration,
         onComplete: () => {
+          this._fadeTween = null;
           if (callback) callback(this);
+        },
+        onStop: () => {
+          this._fadeTween = null;
         }
       });
       this._fadeTween = tween;
@@ -198,7 +208,11 @@
         fadeAlpha: 0,
         duration: duration === undefined ? 500 : duration,
         onComplete: () => {
+          this._fadeTween = null;
           if (callback) callback(this);
+        },
+        onStop: () => {
+          this._fadeTween = null;
         }
       });
       this._fadeTween = tween;
@@ -560,6 +574,9 @@
       this.events = new EventEmitter();
       this.status = 'new';
       this.data = {};
+      // When true, scenes below this one stop receiving pointer input.
+      this.blockInput = false;
+      this._resumeStatus = 'running';
       this._bound = false;
       this._loading = false;
       this._updateChildren = this.config.updateChildren !== false;
@@ -747,6 +764,7 @@
       return this;
     }
     sleep() {
+      this._resumeStatus = this.status === 'paused' ? 'paused' : 'running';
       this.status = 'sleeping';
       if (this.camera) this.camera.visible = false;
       this.events.emit('sleep');
@@ -754,10 +772,15 @@
     }
     wake() {
       if (this.status === 'sleeping') {
-        this.status = 'running';
+        this.status = this._resumeStatus || 'running';
         if (this.camera) this.camera.visible = true;
         this.events.emit('wake');
       }
+      return this;
+    }
+    /** Block pointer input for scenes below this one (modal dialogs). */
+    setBlockInput(value) {
+      this.blockInput = value === undefined ? true : !!value;
       return this;
     }
 
@@ -815,18 +838,22 @@
       if (!camera || camera.visible === false) return;
       const objects = this.children.slice().sort((a, b) => a.depth - b.depth);
       ctx.save();
-      if (camera.backgroundColor) {
-        ctx.fillStyle = camera.backgroundColor;
-        ctx.fillRect(0, 0, camera.width, camera.height);
+      try {
+        if (camera.backgroundColor) {
+          ctx.fillStyle = camera.backgroundColor;
+          ctx.fillRect(0, 0, camera.width, camera.height);
+        }
+        camera.apply(ctx);
+        this.events.emit('prerender', ctx);
+        objects.forEach((child) => {
+          if (child.destroyed || child.visible === false || child.isScreenSpace()) return;
+          child.render(ctx);
+        });
+        this.events.emit('render', ctx);
+      } finally {
+        // A throwing child must not leave the camera transform on the stack.
+        ctx.restore();
       }
-      camera.apply(ctx);
-      this.events.emit('prerender', ctx);
-      objects.forEach((child) => {
-        if (child.destroyed || child.visible === false || child.isScreenSpace()) return;
-        child.render(ctx);
-      });
-      this.events.emit('render', ctx);
-      ctx.restore();
       objects.forEach((child) => {
         if (child.destroyed || child.visible === false || !child.isScreenSpace()) return;
         child.render(ctx);

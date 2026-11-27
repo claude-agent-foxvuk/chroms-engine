@@ -130,7 +130,9 @@ card.isHovered;          // kept in sync by the input manager
 card.disableInteractive();
 ```
 
-Events: `pointerover`, `pointerout`, `pointerdown`, `pointerup`, `click`, emitted on the object with `(object, pointer)`. Hit testing uses the object's own box unless `hitArea` is supplied (`offsetX`/`offsetY` shift the box). `destroy()` unregisters automatically. Objects inside a `Container` are tested with their local coordinates, so give them an explicit `hitArea` or keep them at the container origin.
+Events: `pointerover`, `pointerout`, `pointerdown`, `pointerup`, `click`, emitted on the object with `(object, pointer)`. Hit testing uses the object's own box unless `hitArea` is supplied (`offsetX`/`offsetY` shift the box). `destroy()` unregisters automatically. Objects inside a `Container` are tested through the parent transform, so a child at `(10, 10)` of a container at `(200, 300)` responds at `(210, 310)`. `object.toLocal(x, y)` returns that point in the object's own space and `object.inScreenSpace()` reports whether it or an ancestor uses scroll factor `0`.
+
+Pointer input only reaches **running** scenes. A paused or sleeping scene ignores it, `game.pause()` disables widgets and `setInteractive` too, and `scene.setBlockInput(true)` makes a modal scene swallow input for everything below it in `sceneStack`. Objects that lose hover when input is disabled receive `pointerout`.
 
 ## Gamepad
 
@@ -357,3 +359,4 @@ Immovable bodies do not carry riders automatically. Move the platform manually a
 - No continuous collision detection; very fast objects can tunnel. Use smaller steps (`physics.fixedStep`), shorter bodies, or raycasts.
 - Sensors do not participate in separation but still need a registered collider to report.
 - `isCircle` does not change collision shape.
+- One physics world is shared by every active scene, so `setBounds()`, gravity and colliders are global. Pause or sleep a scene to freeze its bodies, and use `setCollideWorldBounds(false)` with per-body limits when two scenes need different borders.

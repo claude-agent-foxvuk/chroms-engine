@@ -2,6 +2,37 @@
 
 All notable changes to Chroms. The project follows semantic versioning.
 
+## [1.2.2] — 2026-11-27
+
+A bug-fix release that closes the remaining known issues from the 1.2 review. The API only grows: `scene.blockInput`, `scene.setBlockInput()`, `object.toLocal()`, `object.inScreenSpace()` and the tween `onStop` hook.
+
+### Fixed
+
+- Pointer input ignored scene state: hidden or paused scenes still received `setInteractive` clicks, buttons, sliders, toggles and joysticks, and `game.pause()` did not stop them. Input is now filtered by `scene.status === 'running'`, by `game.paused` and by `scene.blockInput` on any scene above.
+- Hit tests used raw `x`/`y`, so interactive objects inside a `Container` were clickable at the wrong place (or not at all). `toLocal()` now walks the parent chain (position, rotation, scale, origin), and drag offsets are stored in the parent's space.
+- Disabling input or emptying the interactive list dropped hover state without emitting `pointerout`, leaving `object.isHovered` stuck at `true`. The manager now emits `pointerout` for each object it forgets.
+- `wake()` always resumed a sleeping scene as `running`, so a scene paused before `sleep()` silently restarted. `sleep()` remembers the status and `wake()` restores it.
+- `camera.fadeOut()` / `fadeIn()` kept `_fadeTween` after the tween was stopped, and stopping a fade still ran `onComplete`. Stopped fades now clear the reference, and `Tween.stop()` calls an optional `onStop` instead of `onComplete`. `panTo()` / `zoomTo()` clear their references on stop as well.
+- Starting a scene while another scene's assets were loading reset the shared loader queue, losing the new scene's queued assets. Starts are now queued (`scene-queued`) and drained when the load finishes.
+- `Scene._render()` left the camera transform and a `save()` on the canvas stack when a child threw during the world pass. The pass is wrapped in `try/finally`.
+- The error overlay drew under whatever transform was active when the exception happened. It now resets `setTransform`, `globalAlpha` and `globalCompositeOperation` before drawing.
+- `_simulate` could step physics for a scene that had stopped itself inside `update()`. Running scenes are collected before updates and re-filtered afterwards.
+
+### Changed
+
+- `Sprite` caches its resolved frame per texture/frame key instead of calling `loader.getFrame()` on every draw.
+- `ParticleEmitter.draw()` computes alpha/scale ranges and the flat color once per draw, not once per particle.
+- `PhysicsWorld.step()` reuses one cache map (`_cacheStore`) instead of allocating a `Map` per step.
+
+### Tests
+
+- Regressions for scene-status and `blockInput` input gating, `game.pause()`, container hit tests, `onStop`, cancelled fades, the error-overlay transform reset, queued scene starts, reused physics cache and cached sprite frames.
+
+### Docs
+
+- Version bumped to 1.2.2 across the README, docs (en/ru), API manifest, `llms.txt`, demo pages and bundle header.
+- Documented input gating, `blockInput`, the parent-aware hit tests, `onStop` and the scene-start queue.
+
 ## [1.2.1] — 2026-11-27
 
 A patch release with five runtime fixes. No API changes.

@@ -670,7 +670,10 @@
     step(delta, scenes) {
       this.stats.pairs = 0;
       this._sceneFilter = scenes && scenes.length ? new Set(scenes) : null;
-      this._cache = new Map();
+      // Reuse one map: a fresh Map per step is pure GC churn.
+      this._cacheStore = this._cacheStore || new Map();
+      this._cacheStore.clear();
+      this._cache = this._cacheStore;
       try {
         if (!this.enabled || this.bodies.length === 0) {
           this._processColliders();

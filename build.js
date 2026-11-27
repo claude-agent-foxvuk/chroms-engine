@@ -24,7 +24,7 @@ const parts = files.map((file) => {
 });
 
 const header =
-  '/*! Chroms Engine v1.2.1 | built ' +
+  '/*! Chroms Engine v1.2.2 | built ' +
   new Date().toISOString().slice(0, 10) +
   ' | docs: docs/en/index.md / docs/ru/index.md */\n';
 

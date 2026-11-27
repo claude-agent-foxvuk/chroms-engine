@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.1
+# Chroms Engine v1.2.2
 
 A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable API, and AI agents that need a predictable, documented surface.
 
@@ -52,6 +52,18 @@ Chroms started in v1.0 as a four-class proof of concept. The current release cov
 - **Tilemaps** — JSON maps, layers, tinted color tiles or sprite-sheet tiles, per-layer collision, dynamic tile edits.
 - **Persistence & math** — localStorage save manager, seeded RNG, vectors, angle/distance helpers, 30+ easings.
 - **AI support** — `Chroms.describe()` runtime manifest plus [`docs/llms.txt`](docs/llms.txt) and [`docs/api.json`](docs/api.json).
+
+## What changed in 1.2.2
+
+A bug-fix release. The API only grows: `scene.blockInput` / `scene.setBlockInput()` and a tween `onStop` hook.
+
+- **Input is scene-aware.** Paused and sleeping scenes no longer react to clicks, `game.pause()` stops widget and `setInteractive` input, and `scene.setBlockInput(true)` lets a modal scene swallow pointer input for the scenes below it. Objects that lose hover while input is disabled now get `pointerout`.
+- **Hit tests follow containers.** `setInteractive`, buttons, toggles, sliders and joysticks inside a `Container` (including rotated and scaled parents) use the same transform as rendering, and a drag keeps the offset in the parent's space instead of jumping.
+- **Transforms are exact.** `object.toLocal(x, y)` and `object.inScreenSpace()` convert scene points into an object's own space through the whole parent chain.
+- **Fades and pans clean up.** `wake()` restores a scene that was paused before `sleep()`; stopped pan, zoom and fade tweens clear their references, and a cancelled fade tween no longer calls `onComplete` — use the new `onStop` config instead.
+- **Scene starts wait for the loader.** `startScene()` / `launchScene()` during an asset load are queued (event `scene-queued`) instead of resetting the loader, then drained when the load completes.
+- **Errors cannot corrupt the frame.** A throwing world pass restores the canvas state (`try/finally`), the error overlay resets the transform, alpha and composite mode before drawing, and the overlay survives a camera transform.
+- **Frame order and cost.** `_simulate` collects running scenes before updating, so a scene stopped inside `update()` gets no physics step; sprite frame lookups are cached, particle draw hoists emitter ranges and colors out of the particle loop, and the physics step reuses its cache map instead of allocating one per step.
 
 ## What changed in 1.2.1
 

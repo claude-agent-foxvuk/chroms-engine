@@ -163,7 +163,7 @@ global.localStorage = (() => {
 })();
 
 const Chroms = require(path.join(__dirname, '..', 'chroms.js'));
-assert.strictEqual(Chroms.version, '1.2.1');
+assert.strictEqual(Chroms.version, '1.2.2');
 assert.ok(Chroms.describe().systems.physics.includes('AABB'));
 
 const parent = createElement('div');
@@ -991,7 +991,137 @@ sleeper.sleep();
 assert.strictEqual(sleeper.camera.visible, false, 'sleep hides the scene camera');
 sleepGame.startScene('sleeper');
 assert.strictEqual(sleeper.camera.visible, true, 'a restarted scene must render again');
+
+// Sleeping a paused scene and waking it returns to paused, not running.
+sleeper.pause();
+sleeper.sleep();
+sleeper.wake();
+assert.strictEqual(sleeper.status, 'paused', 'wake should restore the paused state');
+sleeper.resume();
 sleepGame.destroy();
+
+// --- 1.2.2 regressions ---
+// Pointer input respects scene status, blockInput and container transforms.
+let padClicks = 0;
+const pad = sceneRef.add.rect(300, 40, 60, 30, '#ffffff').setScrollFactor(0);
+pad.setInteractive({ onClick: () => { padClicks += 1; } });
+const tap = (x, y) => {
+  const pointer = game.input.pointer;
+  pointer.x = x;
+  pointer.y = y;
+  pointer.worldX = x;
+  pointer.worldY = y;
+  pointer.justDown = true;
+  pointer.isDown = true;
+  game.input.update();
+  pointer.justDown = false;
+  pointer.isDown = false;
+  pointer.justUp = true;
+  game.input.update();
+  game.input.clearFrameState();
+};
+tap(310, 50);
+assert.strictEqual(padClicks, 1, 'screen-space interactive objects receive clicks');
+sceneRef.pause();
+tap(310, 50);
+assert.strictEqual(padClicks, 1, 'paused scenes ignore pointer input');
+sceneRef.resume();
+game.pause();
+tap(310, 50);
+assert.strictEqual(padClicks, 1, 'a paused game ignores pointer input');
+game.resume();
+
+// Containers: hit testing follows the parent transform.
+const cardHolder = sceneRef.add.container(200, 300).setScrollFactor(0);
+const card = sceneRef.add.rect(10, 10, 40, 20, '#ffffff');
+cardHolder.add(card);
+let cardClicks = 0;
+card.setInteractive({ onClick: () => { cardClicks += 1; } });
+tap(215, 315);
+assert.strictEqual(cardClicks, 1, 'interactive children of a container use world transforms');
+tap(150, 150);
+assert.strictEqual(cardClicks, 1, 'clicks outside the container child do nothing');
+
+// A modal scene blocks input for the scenes below it.
+class ModalScene extends Chroms.Scene {
+  constructor() {
+    super('modal');
+  }
+  create() {
+    this.setBlockInput(true);
+  }
+}
+game.addScene(ModalScene);
+game.launchScene('modal');
+tap(310, 50);
+assert.strictEqual(padClicks, 1, 'blockInput stops clicks on scenes below');
+game.stopScene('modal');
+tap(310, 50);
+assert.strictEqual(padClicks, 2, 'closing the modal returns input');
+
+// Cancelled tweens and camera fades clear their references.
+let tweenStops = 0;
+const stoppable = sceneRef.tweens.add({
+  targets: { v: 0 },
+  v: 1,
+  duration: 100,
+  onStop: () => { tweenStops += 1; }
+});
+stoppable.stop();
+stoppable.stop();
+assert.strictEqual(tweenStops, 1, 'onStop fires once when a tween is cancelled');
+sceneRef.camera.fadeOut(100);
+assert.ok(sceneRef.camera._fadeTween, 'fadeOut creates a tween');
+sceneRef.camera._fadeTween.stop();
+assert.strictEqual(sceneRef.camera._fadeTween, null, 'cancelling a fade clears its reference');
+
+// The error overlay resets the canvas transform before drawing.
+const transforms = [];
+const originalSetTransform = game.ctx.setTransform;
+game.ctx.setTransform = (...args) => { transforms.push(args); };
+game.lastError = { message: 'boom', phase: 'update', frame: 1, stack: '' };
+game._drawErrorOverlay(game.ctx);
+game.ctx.setTransform = originalSetTransform;
+assert.ok(
+  transforms.some((args) => args[0] === game.pixelRatio),
+  'the error overlay resets the canvas transform'
+);
+game.clearError();
+
+// A start requested during another load is queued instead of resetting it.
+const queueGame = new Chroms.Game({
+  width: 120,
+  height: 90,
+  parent,
+  scene: [SleeperScene, SecondScene],
+  autoStart: false,
+  scaleMode: 'none',
+  debug: false
+});
+let queuedEvents = 0;
+queueGame.events.on('scene-queued', () => { queuedEvents += 1; });
+queueGame.load.isLoading = true;
+queueGame.startScene('second');
+assert.strictEqual(queuedEvents, 1, 'a start during loading is queued');
+assert.strictEqual(queueGame.currentScene.key, 'sleeper', 'the running scene is left alone');
+assert.strictEqual(queueGame.currentScene.status, 'running', 'the running scene keeps running');
+queueGame.load.isLoading = false;
+queueGame._startQueuedScenes();
+assert.strictEqual(queueGame.currentScene.key, 'second', 'the queued scene starts after loading');
+assert.strictEqual(queueGame.currentScene.status, 'running', 'the queued scene is running');
+assert.strictEqual(queueGame.getActiveScenes().length, 1, 'a queued startScene still switches scenes');
+queueGame.destroy();
+
+// Physics reuses one cache map instead of allocating per step.
+game.step(1 / 60);
+const cacheStore = sceneRef.physics._cacheStore;
+assert.ok(cacheStore instanceof Map, 'a stepped world keeps its cache map');
+game.step(1 / 60);
+assert.strictEqual(sceneRef.physics._cacheStore, cacheStore, 'the physics cache map is reused');
+
+// Sprite frame lookups are cached until the texture or frame changes.
+const cachedFrame = sceneRef.player._resolveFrame();
+assert.strictEqual(sceneRef.player._resolveFrame(), cachedFrame, 'frame data is cached per texture/frame');
 
 game.destroy();
 assert.ok(!game.running);

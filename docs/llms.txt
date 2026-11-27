@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.1 — LLM quick reference
+# Chroms Engine v1.2.2 — LLM quick reference
 
 Chroms is a dependency-free Canvas 2D game engine for browsers. Single file: chroms.js.
 API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent implementation.
@@ -248,6 +248,10 @@ Game config storagePrefix.
 
 scene.start(key, data?, { fade, fadeColor }), restart(), stop(), pause(), resume(), sleep(), wake().
 Multiple scenes: scene.launch(key, data?) starts a scene on top and keeps this one running.
+Only running scenes receive pointer input; scene.setBlockInput(true) makes a modal scene
+block the scenes below it, and game.pause() disables widget input as well.
+scene.setBlockInput(value?) / scene.blockInput: modal input gating.
+Starts requested while assets load are queued (event scene-queued) and drained afterwards.
 game.getActiveScenes() (bottom to top), game.bringToTop(key), game.sendToBack(key),
 scene.bringToTop(), scene.isActive(). Every running scene updates and renders in stack order.
 Paused/sleeping scenes skip update and freeze their bodies. All scenes share one physics world.

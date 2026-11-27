@@ -107,6 +107,8 @@ If v1.0 code relied on scene objects surviving a switch, move that state to `gam
 
 1.2.1 fixed five runtime bugs without API changes: a slept scene now renders after a restart, `panTo` is no longer overwritten by follow, the music-paused flag no longer survives `stopMusic()`, reparented bodies stay in the right scene and stopped or finished animations leave the animation registry.
 
+1.2.2 added `scene.setBlockInput(true)` and the tween `onStop` hook; the rest is fixes. Pointer input now ignores scenes that are not running and scenes under a `blockInput` scene, hit tests respect `Container` transforms, and a stopped fade clears `camera._fadeTween` without calling `onComplete` (use `onStop`). If a paused scene used to receive clicks, move that UI into a running scene instead.
+
 ## Version checks
 
 ```js

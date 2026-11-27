@@ -77,6 +77,45 @@
       return this.parent ? this.parent.worldY + this.y : this.y;
     }
 
+    /** True when this object or any ancestor renders in screen space. */
+    inScreenSpace() {
+      if (this.isScreenSpace()) return true;
+      return !!(this.parent && this.parent.inScreenSpace());
+    }
+
+    /**
+     * Convert a scene point (screen or world) into this object's draw space,
+     * where (0, 0) is the origin-adjusted top-left corner and units are
+     * unscaled. Walks container parents, so hit tests work inside them.
+     */
+    toLocal(x, y) {
+      const chain = [];
+      for (let node = this; node; node = node.parent) chain.push(node);
+      let px = x;
+      let py = y;
+      for (let i = chain.length - 1; i >= 0; i -= 1) {
+        const node = chain[i];
+        px -= node.x;
+        py -= node.y;
+        if (node.angle) {
+          const r = -MathUtils.degToRad(node.angle);
+          const cos = Math.cos(r);
+          const sin = Math.sin(r);
+          const rx = px * cos - py * sin;
+          const ry = px * sin + py * cos;
+          px = rx;
+          py = ry;
+        }
+        const sx = node.scaleX || 1;
+        const sy = node.scaleY || 1;
+        if (sx !== 1) px /= sx;
+        if (sy !== 1) py /= sy;
+        px += node.originX * node.width;
+        py += node.originY * node.height;
+      }
+      return { x: px, y: py };
+    }
+
     setPosition(x, y) {
       this.x = x;
       this.y = y === undefined ? x : y;
@@ -479,7 +518,12 @@
       if (!this.scene || !this.scene.load) return null;
       const loader = this.scene.load;
       const frame = this.frame === null || this.frame === undefined ? 0 : this.frame;
-      return loader.getFrame(this.texture, frame);
+      const key = this.texture + '#' + frame;
+      if (this._frameKey === key) return this._frameData;
+      const data = loader.getFrame(this.texture, frame);
+      this._frameKey = key;
+      this._frameData = data;
+      return data;
     }
 
     draw(ctx) {
@@ -1232,14 +1276,12 @@
       return this;
     }
     _containsPointer(pointer) {
-      const px = this.isScreenSpace() ? pointer.x : pointer.worldX;
-      const py = this.isScreenSpace() ? pointer.y : pointer.worldY;
-      return (
-        px >= this.x &&
-        px <= this.x + this.displayWidth &&
-        py >= this.y &&
-        py <= this.y + this.displayHeight
-      );
+      if (!this.scene || !this.scene.input) return false;
+      if (!this.scene.input.sceneAcceptsInput(this.scene)) return false;
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      const local = this.toLocal(px, py);
+      return local.x >= 0 && local.x <= this.width && local.y >= 0 && local.y <= this.height;
     }
     update(dt) {
       if (!this.scene) return;
@@ -1308,11 +1350,17 @@
     }
     update(dt) {
       if (!this.scene) return;
-      const pointer = this.scene.input.pointer;
-      const px = this.isScreenSpace() ? pointer.x : pointer.worldX;
-      const py = this.isScreenSpace() ? pointer.y : pointer.worldY;
-      const dx = px - this.centerX;
-      const dy = py - this.centerY;
+      const input = this.scene.input;
+      if (!input.sceneAcceptsInput(this.scene)) {
+        this.activeTouch = false;
+        return;
+      }
+      const pointer = input.pointer;
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      const local = this.toLocal(px, py);
+      const dx = local.x - this.radius;
+      const dy = local.y - this.radius;
       const distance = Math.hypot(dx, dy);
       if (pointer.justDown && distance <= this.radius * 1.25) {
         this.activeTouch = true;
@@ -1401,30 +1449,34 @@
       return this;
     }
     _pointerPoint(pointer) {
-      const screen = this.isScreenSpace();
-      return screen
-        ? { x: pointer.x, y: pointer.y }
-        : { x: pointer.worldX, y: pointer.worldY };
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      return this.toLocal(px, py);
     }
     _contains(point) {
       const pad = this.knobRadius;
       return (
-        point.x >= this.x - (this.vertical ? pad : 0) &&
-        point.x <= this.x + this.width + (this.vertical ? pad : 0) &&
-        point.y >= this.y - (this.vertical ? 0 : pad) &&
-        point.y <= this.y + this.height + (this.vertical ? 0 : pad)
+        point.x >= -(this.vertical ? pad : 0) &&
+        point.x <= this.width + (this.vertical ? pad : 0) &&
+        point.y >= -(this.vertical ? 0 : pad) &&
+        point.y <= this.height + (this.vertical ? 0 : pad)
       );
     }
     update(dt) {
       if (!this.scene || this.disabled) return;
-      const pointer = this.scene.input.pointer;
+      const input = this.scene.input;
+      if (!input.sceneAcceptsInput(this.scene)) {
+        this.dragging = false;
+        return;
+      }
+      const pointer = input.pointer;
       const point = this._pointerPoint(pointer);
       if (pointer.justDown && this._contains(point)) this.dragging = true;
       if (!pointer.isDown) this.dragging = false;
       if (!this.dragging) return;
       const ratio = this.vertical
-        ? 1 - MathUtils.clamp01((point.y - this.y) / Math.max(1, this.height))
-        : MathUtils.clamp01((point.x - this.x) / Math.max(1, this.width));
+        ? 1 - MathUtils.clamp01(point.y / Math.max(1, this.height))
+        : MathUtils.clamp01(point.x / Math.max(1, this.width));
       this.setValue(this.min + ratio * (this.max - this.min));
     }
     draw(ctx) {
@@ -1528,15 +1580,12 @@
       return this;
     }
     _contains(pointer) {
-      const screen = this.isScreenSpace();
-      const px = screen ? pointer.x : pointer.worldX;
-      const py = screen ? pointer.y : pointer.worldY;
-      return (
-        px >= this.x &&
-        px <= this.x + this.displayWidth &&
-        py >= this.y &&
-        py <= this.y + this.displayHeight
-      );
+      if (!this.scene || !this.scene.input) return false;
+      if (!this.scene.input.sceneAcceptsInput(this.scene)) return false;
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      const local = this.toLocal(px, py);
+      return local.x >= 0 && local.x <= this.width && local.y >= 0 && local.y <= this.height;
     }
     update(dt) {
       if (this.scene && !this.disabled) {

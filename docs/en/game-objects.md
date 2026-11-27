@@ -33,6 +33,8 @@ box.setPosition(200, 150)
 | `displayWidth`, `displayHeight` | computed | Size after scale |
 | `centerX`, `centerY`, `right`, `bottom` | computed | Origin-aware bounds |
 | `worldX`, `worldY` | computed | Position including parent container |
+| `inScreenSpace()` | method | `true` when this object or an ancestor has scroll factor `0` |
+| `toLocal(x, y)` | method | Scene point → this object's space (parents, rotation, scale, origin applied) |
 
 ### Methods
 
@@ -137,7 +139,7 @@ const title = this.add.text(400, 60, 'Chroms', {
 });
 
 title.setOrigin(0.5, 0.5);
-title.setText('Chroms v1.2.1');
+title.setText('Chroms v1.2.2');
 ```
 
 | Style key | Default |

@@ -12,6 +12,7 @@
     'onStart',
     'onUpdate',
     'onComplete',
+    'onStop',
     'onYoyo',
     'onRepeat',
     'paused',
@@ -59,6 +60,7 @@
       this.direction = 1;
       this.state = 'pending';
       this.paused = !!cfg.paused;
+      this.onStop = cfg.onStop || null;
       this.timeScale = 1;
       this.properties = {};
 
@@ -197,8 +199,10 @@
       return this;
     }
     stop() {
+      if (this.state === 'complete') return this;
       this.state = 'complete';
       this.manager._remove(this);
+      if (this.onStop) this.onStop(this);
       return this;
     }
     restart() {
@@ -824,17 +828,16 @@
     draw(ctx) {
       const loader = this.scene ? this.scene.load : null;
       const texture = this.config.texture ? loader && loader.getImage(this.config.texture) : null;
+      // Per-draw config, not per particle: this loop runs for every particle.
+      const alphaCfg = this._range(this.config.alpha, 1, 0);
+      const scaleCfg = this._range(this.config.scale, 1, 0.2);
+      const flatColor = this.config.colors ? null : parseColor(this.config.color);
       this.particles.forEach((p) => {
         const t = 1 - p.life / p.maxLife;
-        const alphaCfg = this._range(this.config.alpha, 1, 0);
-        const scaleCfg = this._range(this.config.scale, 1, 0.2);
         const alpha = MathUtils.lerp(alphaCfg.min, alphaCfg.max, t);
         const scale = MathUtils.lerp(scaleCfg.min, scaleCfg.max, t);
         const sizeBase = p.size === undefined ? this.config.size : p.size;
-        const baseColor = sampleColors(
-          this.config.colors,
-          t
-        ) || parseColor(this.config.color);
+        const baseColor = (this.config.colors ? sampleColors(this.config.colors, t) : null) || flatColor;
         const drawAlpha = MathUtils.clamp01(baseColor.a * alpha);
         ctx.save();
         ctx.globalAlpha = drawAlpha;

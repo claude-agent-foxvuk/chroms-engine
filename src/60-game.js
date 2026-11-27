@@ -74,6 +74,7 @@
       this.scenes = {};
       this.sceneOrder = [];
       this.sceneStack = [];
+      this._sceneQueue = [];
       this.currentScene = null;
       this.running = false;
       this.paused = false;
@@ -260,6 +261,13 @@
       const scene = this.scenes[key];
       if (!scene) return null;
       const opts = options || {};
+      // Queue before touching the stack: stopping the old scenes first would
+      // leave the game with nothing to render while the loader finishes.
+      if (this.load.isLoading) {
+        this._sceneQueue.push({ scene, data, keepOthers: !!opts.keepOthers });
+        this.events.emit('scene-queued', scene);
+        return scene;
+      }
       if (opts.keepOthers) {
         if (this.sceneStack.indexOf(key) !== -1) {
           this.bringToTop(key);
@@ -274,6 +282,12 @@
     }
 
     _startSceneInternal(scene, data) {
+      // One loader at a time: queue the start instead of resetting its queue.
+      if (this.load.isLoading) {
+        this._sceneQueue.push({ scene, data, keepOthers: false });
+        this.events.emit('scene-queued', scene);
+        return scene;
+      }
       if (typeof scene.shutdown === 'function') scene.shutdown();
       this._cleanupScene(scene);
       if (this.sceneStack.indexOf(scene.key) === -1) this.sceneStack.push(scene.key);
@@ -294,9 +308,23 @@
           scene.status = 'running';
           scene.create();
           this.events.emit('scene-create', scene);
+          this._startQueuedScenes();
         }
       );
       return scene;
+    }
+    _startQueuedScenes() {
+      if (this.load.isLoading) return this;
+      const next = this._sceneQueue.shift();
+      if (!next) return this;
+      // A queued startScene keeps its "switch" meaning, a queued launch its "add".
+      if (!next.keepOthers) {
+        this.getActiveScenes().forEach((active) => {
+          if (active !== next.scene) this._stopSceneInternal(active);
+        });
+      }
+      this._startSceneInternal(next.scene, next.data);
+      return this;
     }
 
     _stopSceneInternal(scene) {
@@ -479,13 +507,13 @@
 
     _simulate(delta) {
       if (!(document.hidden && this.pauseOnHidden)) {
-        const running = [];
-        this.getActiveScenes().forEach((scene) => {
-          if (scene.status !== 'running') return;
-          scene._update(delta);
-          running.push(scene);
-        });
-        if (running.length) this.physics.step(delta, running);
+        // Collect first: a scene that stops itself in update() must not get
+        // a physics step, and a scene launched now starts on the next frame.
+        const running = this.getActiveScenes().filter((scene) => scene.status === 'running');
+        running.forEach((scene) => scene._update(delta));
+        // A scene that stopped or paused itself in update() keeps its bodies frozen.
+        const alive = running.filter((scene) => scene.status === 'running');
+        if (alive.length) this.physics.step(delta, alive);
       }
       this.tweens.update(delta);
       this.time.update(delta);
@@ -646,6 +674,10 @@
 
     _drawErrorOverlay(ctx) {
       if (!this.errorOverlay.show || !this.lastError) return this;
+      // The exception may have left a camera transform or a save() on the stack.
+      ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
       const padding = 24;
       const width = Math.min(640, this.width - padding * 2);
       const x = (this.width - width) / 2;
@@ -772,6 +804,7 @@
       this.events.emit('destroy', this);
       this.getActiveScenes().forEach((scene) => this._stopSceneInternal(scene));
       this.sceneStack = [];
+      this._sceneQueue = [];
       this.currentScene = null;
       this.sound.stopAll();
       this.input.destroy();
@@ -833,8 +866,9 @@
         physics:
           'AABB world: body enablePhysics({...}), setVelocity, setGravityY, setBounce, setImmovable, collideWorldBounds; collisionGroup/collidesWith and world.setCollisionMatrix for layers; world.collide/overlap/addCollider/raycast/collideTilemap/moveTo',
         input:
-          'input.isDown(code), isJustDown, addAction(name, codes), addKeyCombo(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown,button}, object.setInteractive({ onClick, onHover, onOut }), enableDrag(object), gamepad helpers',
-        tweens: 'scene.tweens.add({ targets, x, y, alpha, duration, ease, yoyo, repeat, delay, onComplete })',
+          'input.isDown(code), isJustDown, addAction(name, codes), addKeyCombo(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown,button}, object.setInteractive({ onClick, onHover, onOut }), enableDrag(object), gamepad helpers; only running scenes receive pointer input, scene.setBlockInput(true) blocks the scenes below, game.pause() blocks widget input',
+        tweens:
+          'scene.tweens.add({ targets, x, y, alpha, duration, ease, yoyo, repeat, delay, onComplete, onStop })',
         timers: 'scene.time.delayedCall(ms, fn), scene.time.addEvent({ delay, loop, callback })',
         animation:
           'game.anims.create({ key, spritesheet, frames|start/end, frameRate, repeat, yoyo }); sprite.play(key)',
@@ -855,9 +889,10 @@
         overlay: 'Backquote toggles the FPS/body debug overlay'
       },
       scenesMulti:
-        'scene.launch(key) starts a scene on top of the running ones; game.getActiveScenes() returns the stack, scene.bringToTop() reorders it, scene.isActive() checks membership',
+        'scene.launch(key) starts a scene on top of the running ones; game.getActiveScenes() returns the stack, scene.bringToTop() reorders it, scene.isActive() checks membership; scene.setBlockInput(true) makes a modal scene swallow pointer input for the scenes below; starts requested while assets load are queued (event scene-queued)',
       gotchas: [
         'All active scenes share one physics world and one input pointer; a paused or sleeping scene has its bodies frozen automatically.',
+        'Pointer input only reaches running scenes: game.pause() disables widget/setInteractive input, and scene.setBlockInput(true) blocks the scenes below it.',
         'Physics is AABB only; rotated sprites use their unrotated box.',
         'Call scene.physics.collide/addCollider once; the world checks the pair every fixed step.',
         'Set velocities in update(); the physics step runs after scene.update.',

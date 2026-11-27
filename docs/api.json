@@ -1,6 +1,6 @@
 {
   "name": "Chroms",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "runtime": "browser",
   "inspiration": "API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent Canvas 2D implementation",
   "global": "window.Chroms",
@@ -72,7 +72,7 @@
         "addScene(SceneClass)": "register a scene class or instance",
         "getScene(key)": "lookup",
         "removeScene(key)": "remove and clean a scene",
-        "startScene(key, data?, { fade, fadeColor }?)": "switch scenes, optional fade",
+        "startScene(key, data?, { fade, fadeColor }?)": "switch scenes, optional fade; queued with scene-queued while assets load",
         "launchScene(key, data?)": "start a scene on top of the active ones without stopping them",
         "bringToTop(key?)": "raise an active scene in the render order",
         "sendToBack(key?)": "lower an active scene in the render order",
@@ -101,11 +101,11 @@
         "clearError()": "dismiss the runtime error overlay",
         "destroy()": "stop and remove canvas"
       },
-      "events": ["ready", "start", "stop", "pause", "resume", "preupdate", "postupdate", "scene-added", "scene-start", "scene-create", "scene-stop", "scene-launch", "scene-bring-to-top", "scene-sent-to-back", "scene-load-progress", "load-start", "load-progress", "load-complete",         "debug-toggle", "visibility", "resize", "plugin-install", "error", "destroy"]
+      "events": ["ready", "start", "stop", "pause", "resume", "preupdate", "postupdate", "scene-added", "scene-start", "scene-create", "scene-stop", "scene-launch", "scene-bring-to-top", "scene-sent-to-back", "scene-queued", "scene-load-progress", "load-start", "load-progress", "load-complete",         "debug-toggle", "visibility", "resize", "plugin-install", "error", "destroy"]
     },
     "Scene": {
       "constructor": "class S extends Chroms.Scene { constructor(){ super('Key') } } or super({ key, updateChildren })",
-      "properties": ["key", "game", "children", "camera", "cameras", "events", "status", "data", "add", "physics", "input", "load", "sound", "anims", "tweens", "time", "storage", "scale", "loadProgress"],
+      "properties": ["key", "game", "children", "camera", "cameras", "events", "status", "data", "blockInput", "add", "physics", "input", "load", "sound", "anims", "tweens", "time", "storage", "scale", "loadProgress"],
       "lifecycle": ["init(data)", "preload()", "create()", "update(dt)", "fixedUpdate(step)", "shutdown()"],
       "methods": {
         "start(key, data?, options?)": "switch scene",
@@ -117,7 +117,8 @@
         "pause()": "pause scene",
         "resume()": "resume scene",
         "sleep()": "sleep scene",
-        "wake()": "wake scene",
+        "wake()": "wake scene, restoring the status it had before sleep()",
+        "setBlockInput(value?)": "block pointer input for scenes below this one (modals); sets scene.blockInput",
         "getChildren()": "direct children",
         "find(predicate)": "first matching child",
         "findByName(name)": "by name",
@@ -282,7 +283,7 @@
       "methods": ["add(config)", "addCounter({ from, to, duration, ease, onUpdate, onComplete })", "chain(configs)", "remove(tween)", "killTweensOf(target)", "pauseAll()", "resumeAll()", "removeAll()", "update(dt)"]
     },
     "Tween": {
-      "config": ["targets", "target", "duration", "delay", "ease", "yoyo", "repeat", "repeatDelay", "hold", "from", "paused", "persist", "onStart", "onUpdate", "onYoyo", "onRepeat", "onComplete", "property values", "{ from, to } values", "dotted property paths"],
+      "config": ["targets", "target", "duration", "delay", "ease", "yoyo", "repeat", "repeatDelay", "hold", "from", "paused", "persist", "onStart", "onUpdate", "onYoyo", "onRepeat", "onComplete", "onStop", "property values", "{ from, to } values", "dotted property paths"],
       "methods": ["pause()", "resume()", "stop()", "restart()", "complete()", "isPlaying()", "getProgress()", "setTimeScale(v)"]
     },
     "TimerManager": {

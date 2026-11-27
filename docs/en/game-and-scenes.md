@@ -287,7 +287,9 @@ Limits worth knowing:
 - One shared physics world, so `physics.setBounds()`, gravity and colliders are global to all active scenes.
 - One input pointer: `input.pointer.worldX/worldY` is converted through the camera of the last scene updated in the frame. Put HUD objects in a top scene and give them `setScrollFactor(0)`.
 - Pointer events are not scene-filtered: every object registered with `setInteractive()` is checked, even in a scene that sits under an overlay or is paused. Guard handlers (`if (this.status !== 'running') return;`) or disable input on the scene below when you open a modal.
-- Scenes load one at a time. Calling `launch` while another scene is still in `preload` is not supported; wait for its `create()` (or the `scene-create` event).
+- Scenes load one at a time. A `startScene`/`launchScene` requested while another scene is still loading is queued (event `scene-queued`) and started when the loader finishes, so its assets are not lost.
+- `scene.setBlockInput(true)` (or `scene.blockInput = true`) makes a modal scene swallow pointer input for every scene below it in the stack; clear it when the modal closes.
+- `sleep()` remembers whether the scene was paused, and `wake()` restores that status instead of always resuming.
 
 ### Manual stepping and errors
 

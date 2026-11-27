@@ -530,17 +530,41 @@
         ? { x: this.pointer.x, y: this.pointer.y }
         : { x: this.pointer.worldX, y: this.pointer.worldY };
     }
+    /**
+     * True while a scene may receive pointer input: it is running and no
+     * scene above it in the stack has `blockInput` set.
+     */
+    sceneAcceptsInput(scene) {
+      if (!scene) return true;
+      if (scene.status !== 'running') return false;
+      const game = this.game;
+      if (game && game.paused) return false;
+      if (!game || !game.sceneStack || !game.scenes) return true;
+      const stack = game.sceneStack;
+      for (let i = stack.length - 1; i >= 0; i -= 1) {
+        const owner = game.scenes[stack[i]];
+        if (!owner) continue;
+        if (owner === scene) return true;
+        if (owner.blockInput) return false;
+      }
+      return true;
+    }
     _interactiveContains(object, x, y) {
       if (object.active === false || object.visible === false || object.destroyed) return false;
+      if (!this.sceneAcceptsInput(object.scene)) return false;
       const opts = object._interactive || {};
-      if (typeof opts.hitArea === 'function') return !!opts.hitArea(x - object.x, y - object.y, object);
-      const left = object.x + (opts.offsetX || 0);
-      const top = object.y + (opts.offsetY || 0);
+      const local =
+        typeof object.toLocal === 'function'
+          ? object.toLocal(x, y)
+          : { x: x - object.x, y: y - object.y };
+      if (typeof opts.hitArea === 'function') return !!opts.hitArea(local.x, local.y, object);
+      const left = opts.offsetX || 0;
+      const top = opts.offsetY || 0;
       return (
-        x >= left &&
-        x <= left + object.displayWidth &&
-        y >= top &&
-        y <= top + object.displayHeight
+        local.x >= left &&
+        local.x <= left + object.width &&
+        local.y >= top &&
+        local.y <= top + object.height
       );
     }
     _emitInteractive(object, type) {
@@ -562,6 +586,12 @@
         (object) => object && !object.destroyed && object._interactive && object._interactive.enabled !== false
       );
       if (!this.enabled || this._interactive.length === 0) {
+        // Dropping hover state must also notify the objects that lost it.
+        this._hovered.forEach((object) => {
+          if (!object || object.destroyed) return;
+          object.isHovered = false;
+          this._emitInteractive(object, 'pointerout');
+        });
         this._hovered = [];
         return;
       }
@@ -633,15 +663,13 @@
       return this;
     }
     _hitTest(object, x, y) {
-      return (
-        object &&
-        object.active &&
-        object.visible &&
-        x >= object.x &&
-        x <= object.x + object.displayWidth &&
-        y >= object.y &&
-        y <= object.y + object.displayHeight
-      );
+      if (!object || !object.active || !object.visible) return false;
+      if (!this.sceneAcceptsInput(object.scene)) return false;
+      const local =
+        typeof object.toLocal === 'function'
+          ? object.toLocal(x, y)
+          : { x: x - object.x, y: y - object.y };
+      return local.x >= 0 && local.x <= object.width && local.y >= 0 && local.y <= object.height;
     }
     _beginDrag() {
       for (let i = this._dragTargets.length - 1; i >= 0; i -= 1) {
@@ -651,11 +679,12 @@
         const y = screen ? this.pointer.y : this.pointer.worldY;
         if (this._hitTest(object, x, y)) {
           const opts = object._dragOptions || {};
+          const space = object.parent ? object.parent.toLocal(x, y) : { x, y };
           this._dragging = {
             object,
             screen,
-            offsetX: x - object.x,
-            offsetY: y - object.y,
+            offsetX: space.x - object.x,
+            offsetY: space.y - object.y,
             options: opts
           };
           object.isDragged = true;
@@ -669,9 +698,10 @@
       const opts = drag.options;
       const px = drag.screen ? this.pointer.x : this.pointer.worldX;
       const py = drag.screen ? this.pointer.y : this.pointer.worldY;
-      const x = px - drag.offsetX;
-      const y = py - drag.offsetY;
       const object = drag.object;
+      const space = object.parent ? object.parent.toLocal(px, py) : { x: px, y: py };
+      const x = space.x - drag.offsetX;
+      const y = space.y - drag.offsetY;
       if (object.body) {
         object.body.setVelocity(0, 0);
       }

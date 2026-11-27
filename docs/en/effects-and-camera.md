@@ -43,7 +43,7 @@ this.tweens.add({
 | `hold` | `0` | Pause at the extremes, ms |
 | `paused` | `false` | Create paused |
 | `persist` | `false` | Keep running if targets are destroyed/inactive |
-| `onStart`, `onUpdate`, `onYoyo`, `onRepeat`, `onComplete` | — | Callbacks |
+| `onStart`, `onUpdate`, `onYoyo`, `onRepeat`, `onComplete`, `onStop` | — | Callbacks; `onStop` runs when `tween.stop()` cancels it, and `onComplete` does not |
 
 ```js
 this.tweens.add({

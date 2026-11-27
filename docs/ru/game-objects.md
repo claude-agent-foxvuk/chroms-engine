@@ -33,6 +33,8 @@ box.setPosition(200, 150)
 | `displayWidth`, `displayHeight` | вычисляются | Размер с учётом масштаба |
 | `centerX/Y`, `right`, `bottom` | вычисляются | Границы с учётом origin |
 | `worldX/Y` | вычисляются | Позиция с учётом контейнера |
+| `inScreenSpace()` | метод | `true`, если объект или его родитель имеет scroll factor `0` |
+| `toLocal(x, y)` | метод | Точка сцены → пространство объекта (родители, поворот, масштаб, origin) |
 
 ### Методы
 
@@ -113,7 +115,7 @@ const title = this.add.text(400, 60, 'Chroms', {
 });
 
 title.setOrigin(0.5, 0.5);
-title.setText('Chroms v1.2.1');
+title.setText('Chroms v1.2.2');
 ```
 
 | Ключ стиля | По умолчанию |

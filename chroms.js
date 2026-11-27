@@ -1,7 +1,7 @@
-/*! Chroms Engine v1.2.1 | built 2026-11-27 | docs: docs/en/index.md / docs/ru/index.md */
+/*! Chroms Engine v1.2.2 | built 2026-11-27 | docs: docs/en/index.md / docs/ru/index.md */
 /* ---- 00-core.js ---- */
 /**
- * Chroms Engine v1.2.1
+ * Chroms Engine v1.2.2
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
  * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
@@ -12,7 +12,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.2.1';
+  const VERSION = '1.2.2';
   let _uid = 0;
 
   function uid(prefix) {
@@ -1147,17 +1147,41 @@
         ? { x: this.pointer.x, y: this.pointer.y }
         : { x: this.pointer.worldX, y: this.pointer.worldY };
     }
+    /**
+     * True while a scene may receive pointer input: it is running and no
+     * scene above it in the stack has `blockInput` set.
+     */
+    sceneAcceptsInput(scene) {
+      if (!scene) return true;
+      if (scene.status !== 'running') return false;
+      const game = this.game;
+      if (game && game.paused) return false;
+      if (!game || !game.sceneStack || !game.scenes) return true;
+      const stack = game.sceneStack;
+      for (let i = stack.length - 1; i >= 0; i -= 1) {
+        const owner = game.scenes[stack[i]];
+        if (!owner) continue;
+        if (owner === scene) return true;
+        if (owner.blockInput) return false;
+      }
+      return true;
+    }
     _interactiveContains(object, x, y) {
       if (object.active === false || object.visible === false || object.destroyed) return false;
+      if (!this.sceneAcceptsInput(object.scene)) return false;
       const opts = object._interactive || {};
-      if (typeof opts.hitArea === 'function') return !!opts.hitArea(x - object.x, y - object.y, object);
-      const left = object.x + (opts.offsetX || 0);
-      const top = object.y + (opts.offsetY || 0);
+      const local =
+        typeof object.toLocal === 'function'
+          ? object.toLocal(x, y)
+          : { x: x - object.x, y: y - object.y };
+      if (typeof opts.hitArea === 'function') return !!opts.hitArea(local.x, local.y, object);
+      const left = opts.offsetX || 0;
+      const top = opts.offsetY || 0;
       return (
-        x >= left &&
-        x <= left + object.displayWidth &&
-        y >= top &&
-        y <= top + object.displayHeight
+        local.x >= left &&
+        local.x <= left + object.width &&
+        local.y >= top &&
+        local.y <= top + object.height
       );
     }
     _emitInteractive(object, type) {
@@ -1179,6 +1203,12 @@
         (object) => object && !object.destroyed && object._interactive && object._interactive.enabled !== false
       );
       if (!this.enabled || this._interactive.length === 0) {
+        // Dropping hover state must also notify the objects that lost it.
+        this._hovered.forEach((object) => {
+          if (!object || object.destroyed) return;
+          object.isHovered = false;
+          this._emitInteractive(object, 'pointerout');
+        });
         this._hovered = [];
         return;
       }
@@ -1250,15 +1280,13 @@
       return this;
     }
     _hitTest(object, x, y) {
-      return (
-        object &&
-        object.active &&
-        object.visible &&
-        x >= object.x &&
-        x <= object.x + object.displayWidth &&
-        y >= object.y &&
-        y <= object.y + object.displayHeight
-      );
+      if (!object || !object.active || !object.visible) return false;
+      if (!this.sceneAcceptsInput(object.scene)) return false;
+      const local =
+        typeof object.toLocal === 'function'
+          ? object.toLocal(x, y)
+          : { x: x - object.x, y: y - object.y };
+      return local.x >= 0 && local.x <= object.width && local.y >= 0 && local.y <= object.height;
     }
     _beginDrag() {
       for (let i = this._dragTargets.length - 1; i >= 0; i -= 1) {
@@ -1268,11 +1296,12 @@
         const y = screen ? this.pointer.y : this.pointer.worldY;
         if (this._hitTest(object, x, y)) {
           const opts = object._dragOptions || {};
+          const space = object.parent ? object.parent.toLocal(x, y) : { x, y };
           this._dragging = {
             object,
             screen,
-            offsetX: x - object.x,
-            offsetY: y - object.y,
+            offsetX: space.x - object.x,
+            offsetY: space.y - object.y,
             options: opts
           };
           object.isDragged = true;
@@ -1286,9 +1315,10 @@
       const opts = drag.options;
       const px = drag.screen ? this.pointer.x : this.pointer.worldX;
       const py = drag.screen ? this.pointer.y : this.pointer.worldY;
-      const x = px - drag.offsetX;
-      const y = py - drag.offsetY;
       const object = drag.object;
+      const space = object.parent ? object.parent.toLocal(px, py) : { x: px, y: py };
+      const x = space.x - drag.offsetX;
+      const y = space.y - drag.offsetY;
       if (object.body) {
         object.body.setVelocity(0, 0);
       }
@@ -2261,7 +2291,10 @@
     step(delta, scenes) {
       this.stats.pairs = 0;
       this._sceneFilter = scenes && scenes.length ? new Set(scenes) : null;
-      this._cache = new Map();
+      // Reuse one map: a fresh Map per step is pure GC churn.
+      this._cacheStore = this._cacheStore || new Map();
+      this._cacheStore.clear();
+      this._cache = this._cacheStore;
       try {
         if (!this.enabled || this.bodies.length === 0) {
           this._processColliders();
@@ -2553,6 +2586,45 @@
     }
     get worldY() {
       return this.parent ? this.parent.worldY + this.y : this.y;
+    }
+
+    /** True when this object or any ancestor renders in screen space. */
+    inScreenSpace() {
+      if (this.isScreenSpace()) return true;
+      return !!(this.parent && this.parent.inScreenSpace());
+    }
+
+    /**
+     * Convert a scene point (screen or world) into this object's draw space,
+     * where (0, 0) is the origin-adjusted top-left corner and units are
+     * unscaled. Walks container parents, so hit tests work inside them.
+     */
+    toLocal(x, y) {
+      const chain = [];
+      for (let node = this; node; node = node.parent) chain.push(node);
+      let px = x;
+      let py = y;
+      for (let i = chain.length - 1; i >= 0; i -= 1) {
+        const node = chain[i];
+        px -= node.x;
+        py -= node.y;
+        if (node.angle) {
+          const r = -MathUtils.degToRad(node.angle);
+          const cos = Math.cos(r);
+          const sin = Math.sin(r);
+          const rx = px * cos - py * sin;
+          const ry = px * sin + py * cos;
+          px = rx;
+          py = ry;
+        }
+        const sx = node.scaleX || 1;
+        const sy = node.scaleY || 1;
+        if (sx !== 1) px /= sx;
+        if (sy !== 1) py /= sy;
+        px += node.originX * node.width;
+        py += node.originY * node.height;
+      }
+      return { x: px, y: py };
     }
 
     setPosition(x, y) {
@@ -2957,7 +3029,12 @@
       if (!this.scene || !this.scene.load) return null;
       const loader = this.scene.load;
       const frame = this.frame === null || this.frame === undefined ? 0 : this.frame;
-      return loader.getFrame(this.texture, frame);
+      const key = this.texture + '#' + frame;
+      if (this._frameKey === key) return this._frameData;
+      const data = loader.getFrame(this.texture, frame);
+      this._frameKey = key;
+      this._frameData = data;
+      return data;
     }
 
     draw(ctx) {
@@ -3710,14 +3787,12 @@
       return this;
     }
     _containsPointer(pointer) {
-      const px = this.isScreenSpace() ? pointer.x : pointer.worldX;
-      const py = this.isScreenSpace() ? pointer.y : pointer.worldY;
-      return (
-        px >= this.x &&
-        px <= this.x + this.displayWidth &&
-        py >= this.y &&
-        py <= this.y + this.displayHeight
-      );
+      if (!this.scene || !this.scene.input) return false;
+      if (!this.scene.input.sceneAcceptsInput(this.scene)) return false;
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      const local = this.toLocal(px, py);
+      return local.x >= 0 && local.x <= this.width && local.y >= 0 && local.y <= this.height;
     }
     update(dt) {
       if (!this.scene) return;
@@ -3786,11 +3861,17 @@
     }
     update(dt) {
       if (!this.scene) return;
-      const pointer = this.scene.input.pointer;
-      const px = this.isScreenSpace() ? pointer.x : pointer.worldX;
-      const py = this.isScreenSpace() ? pointer.y : pointer.worldY;
-      const dx = px - this.centerX;
-      const dy = py - this.centerY;
+      const input = this.scene.input;
+      if (!input.sceneAcceptsInput(this.scene)) {
+        this.activeTouch = false;
+        return;
+      }
+      const pointer = input.pointer;
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      const local = this.toLocal(px, py);
+      const dx = local.x - this.radius;
+      const dy = local.y - this.radius;
       const distance = Math.hypot(dx, dy);
       if (pointer.justDown && distance <= this.radius * 1.25) {
         this.activeTouch = true;
@@ -3879,30 +3960,34 @@
       return this;
     }
     _pointerPoint(pointer) {
-      const screen = this.isScreenSpace();
-      return screen
-        ? { x: pointer.x, y: pointer.y }
-        : { x: pointer.worldX, y: pointer.worldY };
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      return this.toLocal(px, py);
     }
     _contains(point) {
       const pad = this.knobRadius;
       return (
-        point.x >= this.x - (this.vertical ? pad : 0) &&
-        point.x <= this.x + this.width + (this.vertical ? pad : 0) &&
-        point.y >= this.y - (this.vertical ? 0 : pad) &&
-        point.y <= this.y + this.height + (this.vertical ? 0 : pad)
+        point.x >= -(this.vertical ? pad : 0) &&
+        point.x <= this.width + (this.vertical ? pad : 0) &&
+        point.y >= -(this.vertical ? 0 : pad) &&
+        point.y <= this.height + (this.vertical ? 0 : pad)
       );
     }
     update(dt) {
       if (!this.scene || this.disabled) return;
-      const pointer = this.scene.input.pointer;
+      const input = this.scene.input;
+      if (!input.sceneAcceptsInput(this.scene)) {
+        this.dragging = false;
+        return;
+      }
+      const pointer = input.pointer;
       const point = this._pointerPoint(pointer);
       if (pointer.justDown && this._contains(point)) this.dragging = true;
       if (!pointer.isDown) this.dragging = false;
       if (!this.dragging) return;
       const ratio = this.vertical
-        ? 1 - MathUtils.clamp01((point.y - this.y) / Math.max(1, this.height))
-        : MathUtils.clamp01((point.x - this.x) / Math.max(1, this.width));
+        ? 1 - MathUtils.clamp01(point.y / Math.max(1, this.height))
+        : MathUtils.clamp01(point.x / Math.max(1, this.width));
       this.setValue(this.min + ratio * (this.max - this.min));
     }
     draw(ctx) {
@@ -4006,15 +4091,12 @@
       return this;
     }
     _contains(pointer) {
-      const screen = this.isScreenSpace();
-      const px = screen ? pointer.x : pointer.worldX;
-      const py = screen ? pointer.y : pointer.worldY;
-      return (
-        px >= this.x &&
-        px <= this.x + this.displayWidth &&
-        py >= this.y &&
-        py <= this.y + this.displayHeight
-      );
+      if (!this.scene || !this.scene.input) return false;
+      if (!this.scene.input.sceneAcceptsInput(this.scene)) return false;
+      const px = this.inScreenSpace() ? pointer.x : pointer.worldX;
+      const py = this.inScreenSpace() ? pointer.y : pointer.worldY;
+      const local = this.toLocal(px, py);
+      return local.x >= 0 && local.x <= this.width && local.y >= 0 && local.y <= this.height;
     }
     update(dt) {
       if (this.scene && !this.disabled) {
@@ -4056,6 +4138,7 @@
     'onStart',
     'onUpdate',
     'onComplete',
+    'onStop',
     'onYoyo',
     'onRepeat',
     'paused',
@@ -4103,6 +4186,7 @@
       this.direction = 1;
       this.state = 'pending';
       this.paused = !!cfg.paused;
+      this.onStop = cfg.onStop || null;
       this.timeScale = 1;
       this.properties = {};
 
@@ -4241,8 +4325,10 @@
       return this;
     }
     stop() {
+      if (this.state === 'complete') return this;
       this.state = 'complete';
       this.manager._remove(this);
+      if (this.onStop) this.onStop(this);
       return this;
     }
     restart() {
@@ -4868,17 +4954,16 @@
     draw(ctx) {
       const loader = this.scene ? this.scene.load : null;
       const texture = this.config.texture ? loader && loader.getImage(this.config.texture) : null;
+      // Per-draw config, not per particle: this loop runs for every particle.
+      const alphaCfg = this._range(this.config.alpha, 1, 0);
+      const scaleCfg = this._range(this.config.scale, 1, 0.2);
+      const flatColor = this.config.colors ? null : parseColor(this.config.color);
       this.particles.forEach((p) => {
         const t = 1 - p.life / p.maxLife;
-        const alphaCfg = this._range(this.config.alpha, 1, 0);
-        const scaleCfg = this._range(this.config.scale, 1, 0.2);
         const alpha = MathUtils.lerp(alphaCfg.min, alphaCfg.max, t);
         const scale = MathUtils.lerp(scaleCfg.min, scaleCfg.max, t);
         const sizeBase = p.size === undefined ? this.config.size : p.size;
-        const baseColor = sampleColors(
-          this.config.colors,
-          t
-        ) || parseColor(this.config.color);
+        const baseColor = (this.config.colors ? sampleColors(this.config.colors, t) : null) || flatColor;
         const drawAlpha = MathUtils.clamp01(baseColor.a * alpha);
         ctx.save();
         ctx.globalAlpha = drawAlpha;
@@ -4993,6 +5078,9 @@
         onComplete: () => {
           this._zoomTween = null;
           this.setZoom(target);
+        },
+        onStop: () => {
+          this._zoomTween = null;
         }
       });
       return this;
@@ -5008,6 +5096,9 @@
         duration,
         ease: ease || 'sine.inOut',
         onComplete: () => {
+          this._panTween = null;
+        },
+        onStop: () => {
           this._panTween = null;
         }
       });
@@ -5094,7 +5185,11 @@
         fadeAlpha: 1,
         duration: duration === undefined ? 500 : duration,
         onComplete: () => {
+          this._fadeTween = null;
           if (callback) callback(this);
+        },
+        onStop: () => {
+          this._fadeTween = null;
         }
       });
       this._fadeTween = tween;
@@ -5115,7 +5210,11 @@
         fadeAlpha: 0,
         duration: duration === undefined ? 500 : duration,
         onComplete: () => {
+          this._fadeTween = null;
           if (callback) callback(this);
+        },
+        onStop: () => {
+          this._fadeTween = null;
         }
       });
       this._fadeTween = tween;
@@ -5477,6 +5576,9 @@
       this.events = new EventEmitter();
       this.status = 'new';
       this.data = {};
+      // When true, scenes below this one stop receiving pointer input.
+      this.blockInput = false;
+      this._resumeStatus = 'running';
       this._bound = false;
       this._loading = false;
       this._updateChildren = this.config.updateChildren !== false;
@@ -5664,6 +5766,7 @@
       return this;
     }
     sleep() {
+      this._resumeStatus = this.status === 'paused' ? 'paused' : 'running';
       this.status = 'sleeping';
       if (this.camera) this.camera.visible = false;
       this.events.emit('sleep');
@@ -5671,10 +5774,15 @@
     }
     wake() {
       if (this.status === 'sleeping') {
-        this.status = 'running';
+        this.status = this._resumeStatus || 'running';
         if (this.camera) this.camera.visible = true;
         this.events.emit('wake');
       }
+      return this;
+    }
+    /** Block pointer input for scenes below this one (modal dialogs). */
+    setBlockInput(value) {
+      this.blockInput = value === undefined ? true : !!value;
       return this;
     }
 
@@ -5732,18 +5840,22 @@
       if (!camera || camera.visible === false) return;
       const objects = this.children.slice().sort((a, b) => a.depth - b.depth);
       ctx.save();
-      if (camera.backgroundColor) {
-        ctx.fillStyle = camera.backgroundColor;
-        ctx.fillRect(0, 0, camera.width, camera.height);
+      try {
+        if (camera.backgroundColor) {
+          ctx.fillStyle = camera.backgroundColor;
+          ctx.fillRect(0, 0, camera.width, camera.height);
+        }
+        camera.apply(ctx);
+        this.events.emit('prerender', ctx);
+        objects.forEach((child) => {
+          if (child.destroyed || child.visible === false || child.isScreenSpace()) return;
+          child.render(ctx);
+        });
+        this.events.emit('render', ctx);
+      } finally {
+        // A throwing child must not leave the camera transform on the stack.
+        ctx.restore();
       }
-      camera.apply(ctx);
-      this.events.emit('prerender', ctx);
-      objects.forEach((child) => {
-        if (child.destroyed || child.visible === false || child.isScreenSpace()) return;
-        child.render(ctx);
-      });
-      this.events.emit('render', ctx);
-      ctx.restore();
       objects.forEach((child) => {
         if (child.destroyed || child.visible === false || !child.isScreenSpace()) return;
         child.render(ctx);
@@ -5829,6 +5941,7 @@
       this.scenes = {};
       this.sceneOrder = [];
       this.sceneStack = [];
+      this._sceneQueue = [];
       this.currentScene = null;
       this.running = false;
       this.paused = false;
@@ -6015,6 +6128,13 @@
       const scene = this.scenes[key];
       if (!scene) return null;
       const opts = options || {};
+      // Queue before touching the stack: stopping the old scenes first would
+      // leave the game with nothing to render while the loader finishes.
+      if (this.load.isLoading) {
+        this._sceneQueue.push({ scene, data, keepOthers: !!opts.keepOthers });
+        this.events.emit('scene-queued', scene);
+        return scene;
+      }
       if (opts.keepOthers) {
         if (this.sceneStack.indexOf(key) !== -1) {
           this.bringToTop(key);
@@ -6029,6 +6149,12 @@
     }
 
     _startSceneInternal(scene, data) {
+      // One loader at a time: queue the start instead of resetting its queue.
+      if (this.load.isLoading) {
+        this._sceneQueue.push({ scene, data, keepOthers: false });
+        this.events.emit('scene-queued', scene);
+        return scene;
+      }
       if (typeof scene.shutdown === 'function') scene.shutdown();
       this._cleanupScene(scene);
       if (this.sceneStack.indexOf(scene.key) === -1) this.sceneStack.push(scene.key);
@@ -6049,9 +6175,23 @@
           scene.status = 'running';
           scene.create();
           this.events.emit('scene-create', scene);
+          this._startQueuedScenes();
         }
       );
       return scene;
+    }
+    _startQueuedScenes() {
+      if (this.load.isLoading) return this;
+      const next = this._sceneQueue.shift();
+      if (!next) return this;
+      // A queued startScene keeps its "switch" meaning, a queued launch its "add".
+      if (!next.keepOthers) {
+        this.getActiveScenes().forEach((active) => {
+          if (active !== next.scene) this._stopSceneInternal(active);
+        });
+      }
+      this._startSceneInternal(next.scene, next.data);
+      return this;
     }
 
     _stopSceneInternal(scene) {
@@ -6234,13 +6374,13 @@
 
     _simulate(delta) {
       if (!(document.hidden && this.pauseOnHidden)) {
-        const running = [];
-        this.getActiveScenes().forEach((scene) => {
-          if (scene.status !== 'running') return;
-          scene._update(delta);
-          running.push(scene);
-        });
-        if (running.length) this.physics.step(delta, running);
+        // Collect first: a scene that stops itself in update() must not get
+        // a physics step, and a scene launched now starts on the next frame.
+        const running = this.getActiveScenes().filter((scene) => scene.status === 'running');
+        running.forEach((scene) => scene._update(delta));
+        // A scene that stopped or paused itself in update() keeps its bodies frozen.
+        const alive = running.filter((scene) => scene.status === 'running');
+        if (alive.length) this.physics.step(delta, alive);
       }
       this.tweens.update(delta);
       this.time.update(delta);
@@ -6401,6 +6541,10 @@
 
     _drawErrorOverlay(ctx) {
       if (!this.errorOverlay.show || !this.lastError) return this;
+      // The exception may have left a camera transform or a save() on the stack.
+      ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
       const padding = 24;
       const width = Math.min(640, this.width - padding * 2);
       const x = (this.width - width) / 2;
@@ -6527,6 +6671,7 @@
       this.events.emit('destroy', this);
       this.getActiveScenes().forEach((scene) => this._stopSceneInternal(scene));
       this.sceneStack = [];
+      this._sceneQueue = [];
       this.currentScene = null;
       this.sound.stopAll();
       this.input.destroy();
@@ -6588,8 +6733,9 @@
         physics:
           'AABB world: body enablePhysics({...}), setVelocity, setGravityY, setBounce, setImmovable, collideWorldBounds; collisionGroup/collidesWith and world.setCollisionMatrix for layers; world.collide/overlap/addCollider/raycast/collideTilemap/moveTo',
         input:
-          'input.isDown(code), isJustDown, addAction(name, codes), addKeyCombo(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown,button}, object.setInteractive({ onClick, onHover, onOut }), enableDrag(object), gamepad helpers',
-        tweens: 'scene.tweens.add({ targets, x, y, alpha, duration, ease, yoyo, repeat, delay, onComplete })',
+          'input.isDown(code), isJustDown, addAction(name, codes), addKeyCombo(name, codes), actionDown(name), pointer {x,y,worldX,worldY,isDown,justDown,button}, object.setInteractive({ onClick, onHover, onOut }), enableDrag(object), gamepad helpers; only running scenes receive pointer input, scene.setBlockInput(true) blocks the scenes below, game.pause() blocks widget input',
+        tweens:
+          'scene.tweens.add({ targets, x, y, alpha, duration, ease, yoyo, repeat, delay, onComplete, onStop })',
         timers: 'scene.time.delayedCall(ms, fn), scene.time.addEvent({ delay, loop, callback })',
         animation:
           'game.anims.create({ key, spritesheet, frames|start/end, frameRate, repeat, yoyo }); sprite.play(key)',
@@ -6610,9 +6756,10 @@
         overlay: 'Backquote toggles the FPS/body debug overlay'
       },
       scenesMulti:
-        'scene.launch(key) starts a scene on top of the running ones; game.getActiveScenes() returns the stack, scene.bringToTop() reorders it, scene.isActive() checks membership',
+        'scene.launch(key) starts a scene on top of the running ones; game.getActiveScenes() returns the stack, scene.bringToTop() reorders it, scene.isActive() checks membership; scene.setBlockInput(true) makes a modal scene swallow pointer input for the scenes below; starts requested while assets load are queued (event scene-queued)',
       gotchas: [
         'All active scenes share one physics world and one input pointer; a paused or sleeping scene has its bodies frozen automatically.',
+        'Pointer input only reaches running scenes: game.pause() disables widget/setInteractive input, and scene.setBlockInput(true) blocks the scenes below it.',
         'Physics is AABB only; rotated sprites use their unrotated box.',
         'Call scene.physics.collide/addCollider once; the world checks the pair every fixed step.',
         'Set velocities in update(); the physics step runs after scene.update.',
