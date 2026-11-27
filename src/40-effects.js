@@ -543,6 +543,7 @@
     stop(sprite) {
       if (sprite && sprite._anim) {
         sprite._anim.playing = false;
+        this.forget(sprite);
         this.events.emit('stop', sprite._anim.key, sprite);
       }
       return this;
@@ -568,7 +569,8 @@
       return this;
     }
     stopAll() {
-      this._liveSprites().forEach((sprite) => sprite.stop());
+      // stop() unregisters, so iterate a copy instead of the live array.
+      this._liveSprites().slice().forEach((sprite) => sprite.stop());
       this.events.emit('stop-all');
       return this;
     }

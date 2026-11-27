@@ -402,6 +402,7 @@
     }
     stop() {
       if (this._anim) this._anim.playing = false;
+      if (this.scene && this.scene.anims) this.scene.anims.forget(this);
       return this;
     }
     pause() {
@@ -468,6 +469,8 @@
     _finishAnimation(anim) {
       anim.playing = false;
       this.frame = anim.frames[anim.current];
+      // Unregister before onComplete, which may start another animation.
+      if (this.scene && this.scene.anims) this.scene.anims.forget(this);
       if (anim.onComplete) anim.onComplete(this, anim);
       this.events.emit('animationcomplete', anim.key, this);
     }

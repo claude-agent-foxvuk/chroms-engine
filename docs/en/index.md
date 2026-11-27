@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.0 — documentation
+# Chroms Engine v1.2.1 — documentation
 
 Chroms is a dependency-free 2D engine for the browser. It draws with Canvas 2D, ships as a single `chroms.js`, and keeps gameplay code in `Scene` subclasses.
 
@@ -123,6 +123,8 @@ Russian translation: [`../ru/index.md`](../ru/index.md).
 
 **1.2.0 additions** — multiple active scenes (`scene.launch`, `bringToTop`, `isActive`, `game.getActiveScenes`), collision groups/masks (`setCollisionGroup`, `setCollidesWith`, `setCollisionMatrix`), UI widgets (`add.slider`, `add.progressBar`, `add.toggle`), `add.polygon`, `sprite.setTint`, `object.setInteractive` with pointer events, key chords, `repeatDelay` and color tweens, `storage.export/import`, `musicPause/musicResume`, tilemap object layers, `physics.moveTo`.
 
+**1.2.1 fixes** — a slept scene renders again after a restart, `camera.panTo()` outranks an active `follow()`, the music-paused flag no longer sticks to a stopped track, `body.scene` follows `object.addTo()` and stopped or finished animations leave the animation registry.
+
 **1.1.3 additions** — `game.step(dt?)` for manual frames, a runtime error overlay (`game.lastError`, `game.clearError()`, `game.events.on('error')`, `catchErrors: false`), plus zoom clamping in `camera.zoomTo()` and `pointercancel` handling.
 
 **1.1.2 additions** — `camera.panTo(x, y, ms, ease?)`, `game.setPixelArt(bool)`, `game.toggleFullscreen()`, `group.getByName(name)`, `group.getClosest(x, y, aliveOnly?)`, `anims.pauseAll/resumeAll/stopAll`, ranged particle `size`.
@@ -134,11 +136,11 @@ Chroms targets current evergreen browsers. It deliberately stays small:
 - Canvas 2D only (no WebGL, shaders, sprite batching or render textures).
 - AABB physics only; object rotation does not rotate the body and circles collide as boxes.
 - One camera per scene (`scene.camera`; `scene.cameras` is an array of length 1).
-- No built-in text input, sliders, scroll views or layout engine.
+- No built-in text input, scroll views or layout engine.
 - No TMX/Tiled file parser; tilemaps use the JSON format in [tilemaps.md](tilemaps.md).
 - Rendering and logic share one thread; no workers.
 - Scene switching destroys the previous scene's objects, tweens and timers.
 
 ## Version
 
-Current version: **1.2.0**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.
+Current version: **1.2.1**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.

@@ -163,7 +163,7 @@ global.localStorage = (() => {
 })();
 
 const Chroms = require(path.join(__dirname, '..', 'chroms.js'));
-assert.strictEqual(Chroms.version, '1.2.0');
+assert.strictEqual(Chroms.version, '1.2.1');
 assert.ok(Chroms.describe().systems.physics.includes('AABB'));
 
 const parent = createElement('div');
@@ -441,6 +441,37 @@ assert.strictEqual(
   'destroyed sprites should leave the animation registry'
 );
 
+// --- 1.2.1: stopped and finished animations leave the registry too ---
+const pooled = sceneRef.add.sprite(40, 40, 10, 10, '#ffffff');
+pooled.play('spin');
+assert.ok(sceneRef.anims.sprites.indexOf(pooled) !== -1, 'play registers the sprite');
+pooled.stop();
+assert.strictEqual(
+  sceneRef.anims.sprites.indexOf(pooled),
+  -1,
+  'stopped sprites should leave the animation registry'
+);
+sceneRef.anims.create({ key: 'once', frames: [0, 1], frameRate: 60, repeat: 0 });
+pooled.play('once');
+pooled.update(1);
+assert.ok(!pooled.isPlaying(), 'a finite animation should finish');
+assert.strictEqual(
+  sceneRef.anims.sprites.indexOf(pooled),
+  -1,
+  'finished sprites should leave the animation registry'
+);
+pooled.play('spin');
+assert.ok(sceneRef.anims.sprites.indexOf(pooled) !== -1, 'replaying re-registers the sprite');
+
+// stopAll still stops every sprite while unregistering them.
+const pooledB = sceneRef.add.sprite(50, 50, 10, 10, '#ffffff');
+pooledB.play('spin');
+sceneRef.anims.stopAll();
+assert.ok(!pooled.isPlaying() && !pooledB.isPlaying(), 'stopAll should stop every sprite');
+assert.strictEqual(sceneRef.anims.sprites.length, 0, 'stopAll should empty the registry');
+pooled.destroy();
+pooledB.destroy();
+
 // Group lookup helpers.
 const wall = sceneRef.group.getFirst(true);
 wall.setName('wall');
@@ -452,15 +483,24 @@ assert.strictEqual(
   'group.getClosest'
 );
 
-// Camera panTo tweens the camera position.
+// Camera panTo tweens the camera position and outranks an active follow.
+sceneRef.camera.follow(sceneRef.player, { lerpX: 1, lerpY: 1 });
+sceneRef.camera.scrollTo(0, 0);
 sceneRef.camera.panTo(500, 400, 120);
-const panTween = sceneRef.tweens.tweens.filter(
-  (item) => item.targets.indexOf(sceneRef.camera) !== -1
-)[0];
+const panTween = sceneRef.camera._panTween;
 assert.ok(panTween, 'panTo should tween the camera');
 panTween.update(60);
-assert.ok(sceneRef.camera.x > 0, 'panTo should move the camera');
-panTween.stop();
+const panX = sceneRef.camera.x;
+const panY = sceneRef.camera.y;
+assert.ok(panX > 0 || panY > 0, 'panTo should move the camera');
+sceneRef.camera.update(0.016);
+assert.strictEqual(sceneRef.camera.x, panX, 'follow must not overwrite an active pan');
+assert.strictEqual(sceneRef.camera.y, panY, 'follow must not overwrite an active pan');
+panTween.update(60);
+assert.strictEqual(sceneRef.camera._panTween, null, 'panTo clears itself when the tween ends');
+const completedX = sceneRef.camera.x;
+sceneRef.camera.update(0.016);
+assert.notStrictEqual(sceneRef.camera.x, completedX, 'follow resumes after the pan ends');
 
 // Pixel-art switch and fullscreen guard.
 game.setPixelArt(true);
@@ -734,7 +774,22 @@ game.sound.musicPause();
 assert.strictEqual(game.sound.isMusicPlaying(), false, 'musicPause should pause');
 game.sound.musicResume();
 assert.strictEqual(game.sound.isMusicPlaying(), true, 'musicResume should resume');
+
+// A fresh track must not inherit the paused flag of a stopped one.
+game.sound.musicPause();
 game.sound.stopMusic();
+assert.ok(game.sound.musicPlay('song', { volume: 0 }), 'a track should play after a paused stop');
+assert.strictEqual(
+  game.sound.isMusicPlaying(),
+  true,
+  'musicPlay should clear the paused flag'
+);
+game.sound.stopMusic();
+assert.strictEqual(
+  game.sound.isMusicPlaying(),
+  false,
+  'isMusicPlaying stays false after stopMusic'
+);
 delete game.load.audios.song;
 
 // Tilemap object layers.
@@ -884,6 +939,23 @@ assert.strictEqual(world.updates, worldUpdateCount, 'paused scene should not upd
 assert.strictEqual(hud.updates, hudUpdateCount + 1, 'other scenes keep updating');
 multiGame.resumeScene('world');
 
+// --- 1.2.1: a reparented body belongs to its new scene ---
+world.player.addTo(hud);
+assert.strictEqual(world.player.body.scene, hud, 'body.scene should follow the object');
+multiGame.pauseScene('hud');
+world.player.body.velocity.x = 120;
+const movedX = world.player.body.x;
+multiGame.step(0.05);
+assert.strictEqual(
+  world.player.body.x,
+  movedX,
+  'a reparented body must obey the new scene status'
+);
+multiGame.resumeScene('hud');
+world.player.body.velocity.x = 0;
+world.player.addTo(world);
+assert.strictEqual(world.player.body.scene, world, 'body.scene follows the object back');
+
 // Reordering and stopping.
 multiGame.bringToTop('world');
 assert.strictEqual(multiGame.currentScene.key, 'world');
@@ -895,6 +967,31 @@ assert.strictEqual(multiGame.currentScene.key, 'world');
 multiGame.stopScene('world');
 assert.strictEqual(multiGame.currentScene, null);
 multiGame.destroy();
+
+// --- 1.2.1: restarting a slept scene must make it render again ---
+class SleeperScene extends Chroms.Scene {
+  constructor() {
+    super('sleeper');
+  }
+  create() {
+    this.add.rect(0, 0, 8, 8, '#ffffff');
+  }
+}
+const sleepGame = new Chroms.Game({
+  width: 160,
+  height: 120,
+  parent,
+  scene: [SleeperScene],
+  autoStart: false,
+  scaleMode: 'none',
+  debug: false
+});
+const sleeper = sleepGame.currentScene;
+sleeper.sleep();
+assert.strictEqual(sleeper.camera.visible, false, 'sleep hides the scene camera');
+sleepGame.startScene('sleeper');
+assert.strictEqual(sleeper.camera.visible, true, 'a restarted scene must render again');
+sleepGame.destroy();
 
 game.destroy();
 assert.ok(!game.running);

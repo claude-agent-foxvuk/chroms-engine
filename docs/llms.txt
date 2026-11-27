@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.0 — LLM quick reference
+# Chroms Engine v1.2.1 — LLM quick reference
 
 Chroms is a dependency-free Canvas 2D game engine for browsers. Single file: chroms.js.
 API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent implementation.

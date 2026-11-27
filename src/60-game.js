@@ -325,6 +325,11 @@
         scene.camera.scrollTo(0, 0);
         scene.camera.shakeTime = 0;
         scene.camera.shakeOffset.set(0, 0);
+        // sleep() hides the camera; a restart must show the scene again.
+        scene.camera.visible = true;
+        scene.camera._panTween = null;
+        scene.camera._zoomTween = null;
+        scene.camera._fadeTween = null;
       }
       scene.children.slice().forEach((child) => {
         if (child && !child.destroyed) child.destroy(true);

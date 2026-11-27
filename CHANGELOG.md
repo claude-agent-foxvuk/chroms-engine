@@ -2,6 +2,27 @@
 
 All notable changes to Chroms. The project follows semantic versioning.
 
+## [1.2.1] — 2026-11-27
+
+A patch release with five runtime fixes. No API changes.
+
+### Fixed
+
+- A scene put to `sleep()` stayed invisible after it was restarted, because scene cleanup never restored `camera.visible`.
+- `camera.panTo()` was overwritten by `follow()` every frame: the follow lerp ran after the pan tween and reset the position. Following is now suspended while a pan is running and resumes when the pan ends.
+- `sound.musicPause()` left the paused flag set after the track was stopped, so a new track reported `isMusicPlaying() === false` and `musicResume()` acted on a stale state. `musicPlay()` and `stopMusic()` reset it.
+- `body.scene` was captured when the body was created, so `object.addTo(otherScene)` left the body tied to the old scene and scene-aware physics froze or simulated it incorrectly. The body now reads the owning scene from its object.
+- The animation registry only dropped destroyed sprites. `anims.stop()`, `sprite.stop()` and a finished animation now unregister as well, so pooled sprites no longer accumulate; `anims.stopAll()` iterates a copy so it does not skip entries while unregistering.
+
+### Tests
+
+- Regressions for the slept-scene restart, `panTo` versus `follow`, the stale music-paused flag, reparented bodies and animation registry cleanup.
+
+### Docs
+
+- Version bumped to 1.2.1 across the README, docs (en/ru), API manifest, `llms.txt`, demo pages and the bundle header.
+- The compatibility notes no longer claim that sliders are missing.
+
 ## [1.2.0] — 2026-11-26
 
 A feature release: layered scenes, collision layers, UI widgets and richer input. Every 1.1.x API keeps working.

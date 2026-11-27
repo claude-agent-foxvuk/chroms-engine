@@ -729,6 +729,7 @@
       this.muted = false;
       this.music = null;
       this.musicKey = null;
+      this._musicPaused = false;
       this.active = [];
       this._fades = [];
       this._context = null;
@@ -851,6 +852,7 @@
       if (!handle) return null;
       this.music = handle;
       this.musicKey = key;
+      this._musicPaused = false;
       if (fade > 0) {
         handle.audio.volume = 0;
         this._fadeTo(handle, handle.baseVolume * this.musicVolume * this.masterVolume, fade);
@@ -889,6 +891,7 @@
       const handle = this.music;
       this.music = null;
       this.musicKey = null;
+      this._musicPaused = false;
       if (fade && fade > 0) {
         this._fadeTo(handle, 0, fade, () => handle.stop());
       } else {

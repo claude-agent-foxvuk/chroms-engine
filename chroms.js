@@ -1,7 +1,7 @@
-/*! Chroms Engine v1.2.0 | built 2026-11-26 | docs: docs/en/index.md / docs/ru/index.md */
+/*! Chroms Engine v1.2.1 | built 2026-11-27 | docs: docs/en/index.md / docs/ru/index.md */
 /* ---- 00-core.js ---- */
 /**
- * Chroms Engine v1.2.0
+ * Chroms Engine v1.2.1
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
  * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
@@ -12,7 +12,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.2.0';
+  const VERSION = '1.2.1';
   let _uid = 0;
 
   function uid(prefix) {
@@ -1346,6 +1346,7 @@
       this.muted = false;
       this.music = null;
       this.musicKey = null;
+      this._musicPaused = false;
       this.active = [];
       this._fades = [];
       this._context = null;
@@ -1468,6 +1469,7 @@
       if (!handle) return null;
       this.music = handle;
       this.musicKey = key;
+      this._musicPaused = false;
       if (fade > 0) {
         handle.audio.volume = 0;
         this._fadeTo(handle, handle.baseVolume * this.musicVolume * this.masterVolume, fade);
@@ -1506,6 +1508,7 @@
       const handle = this.music;
       this.music = null;
       this.musicKey = null;
+      this._musicPaused = false;
       if (fade && fade > 0) {
         this._fadeTo(handle, 0, fade, () => handle.stop());
       } else {
@@ -1595,7 +1598,7 @@
       const opts = config || {};
       this.id = uid('body');
       this.object = object;
-      this.scene = object.scene || null;
+      this._scene = object.scene || null;
       this.game = object.game || (object.scene ? object.scene.game : null);
       this.world = null;
       this.offsetX = opts.offsetX || 0;
@@ -1626,6 +1629,19 @@
       this.onCollide = null;
       this.onWorldBounds = null;
       this.custom = {};
+    }
+
+    /**
+     * Owning scene. Read from the object, so reparenting it with addTo()
+     * keeps the physics scene filter correct.
+     */
+    get scene() {
+      const owner = this.object;
+      if (owner && owner.scene !== undefined) return owner.scene || null;
+      return this._scene;
+    }
+    set scene(value) {
+      this._scene = value || null;
     }
 
     get x() {
@@ -2864,6 +2880,7 @@
     }
     stop() {
       if (this._anim) this._anim.playing = false;
+      if (this.scene && this.scene.anims) this.scene.anims.forget(this);
       return this;
     }
     pause() {
@@ -2930,6 +2947,8 @@
     _finishAnimation(anim) {
       anim.playing = false;
       this.frame = anim.frames[anim.current];
+      // Unregister before onComplete, which may start another animation.
+      if (this.scene && this.scene.anims) this.scene.anims.forget(this);
       if (anim.onComplete) anim.onComplete(this, anim);
       this.events.emit('animationcomplete', anim.key, this);
     }
@@ -4568,6 +4587,7 @@
     stop(sprite) {
       if (sprite && sprite._anim) {
         sprite._anim.playing = false;
+        this.forget(sprite);
         this.events.emit('stop', sprite._anim.key, sprite);
       }
       return this;
@@ -4593,7 +4613,8 @@
       return this;
     }
     stopAll() {
-      this._liveSprites().forEach((sprite) => sprite.stop());
+      // stop() unregisters, so iterate a copy instead of the live array.
+      this._liveSprites().slice().forEach((sprite) => sprite.stop());
       this.events.emit('stop-all');
       return this;
     }
@@ -5123,7 +5144,9 @@
       return this;
     }
     update(dt) {
-      if (this.followTarget) {
+      // A running panTo() owns the camera position; following would overwrite it.
+      const panning = !!this._panTween && this._panTween.state !== 'complete';
+      if (this.followTarget && !panning) {
         const target = this.followTarget;
         const viewWidth = this.width / this.zoom;
         const viewHeight = this.height / this.zoom;
@@ -6057,6 +6080,11 @@
         scene.camera.scrollTo(0, 0);
         scene.camera.shakeTime = 0;
         scene.camera.shakeOffset.set(0, 0);
+        // sleep() hides the camera; a restart must show the scene again.
+        scene.camera.visible = true;
+        scene.camera._panTween = null;
+        scene.camera._zoomTween = null;
+        scene.camera._fadeTween = null;
       }
       scene.children.slice().forEach((child) => {
         if (child && !child.destroyed) child.destroy(true);

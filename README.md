@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.0
+# Chroms Engine v1.2.1
 
 A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable API, and AI agents that need a predictable, documented surface.
 
@@ -52,6 +52,16 @@ v1.0 was a four-class proof of concept. v1.1 is a complete small engine:
 - **Tilemaps** — JSON maps, layers, tinted color tiles or sprite-sheet tiles, per-layer collision, dynamic tile edits.
 - **Persistence & math** — localStorage save manager, seeded RNG, vectors, angle/distance helpers, 30+ easings.
 - **AI support** — `Chroms.describe()` runtime manifest plus [`docs/llms.txt`](docs/llms.txt) and [`docs/api.json`](docs/api.json).
+
+## What changed in 1.2.1
+
+A patch release with five runtime fixes and no API changes:
+
+- A scene that was `sleep()`-ed stayed invisible after a restart; scene cleanup now restores `camera.visible`.
+- `camera.panTo()` is no longer overwritten every frame by `follow()`; following pauses for the pan and resumes after it.
+- `sound.musicPause()` no longer leaves the paused flag set on a stopped track, so `isMusicPlaying()` and `musicResume()` stay correct.
+- `body.scene` now follows the object, so `object.addTo(otherScene)` keeps scene-aware physics in the right scene.
+- Stopped and finished animations unregister from the animation registry, so pooled sprites no longer accumulate there.
 
 ## What is new in 1.2.0
 

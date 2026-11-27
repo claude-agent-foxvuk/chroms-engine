@@ -1,6 +1,6 @@
 {
   "name": "Chroms",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "runtime": "browser",
   "inspiration": "API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent Canvas 2D implementation",
   "global": "window.Chroms",

@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.0 — документация
+# Chroms Engine v1.2.1 — документация
 
 Chroms — 2D-движок для браузера без зависимостей. Рисует через Canvas 2D, поставляется одним файлом `chroms.js`, а игровая логика живёт в подклассах `Chroms.Scene`.
 
@@ -121,6 +121,8 @@ English (primary): [`../en/index.md`](../en/index.md).
 
 **Новое в 1.2.0** — несколько активных сцен (`scene.launch`, `bringToTop`, `isActive`, `game.getActiveScenes`), слои и маски коллизий (`setCollisionGroup`, `setCollidesWith`, `setCollisionMatrix`), UI-виджеты (`add.slider`, `add.progressBar`, `add.toggle`), `add.polygon`, `sprite.setTint`, `object.setInteractive` с событиями указателя, комбинации клавиш, `repeatDelay` и цветовые твины, `storage.export/import`, `musicPause/musicResume`, объектные слои тайлмапов, `physics.moveTo`.
 
+**Исправления в 1.2.1** — сцена после сна снова рендерится после перезапуска, `camera.panTo()` не перебивается активным `follow()`, флаг паузы музыки не остаётся на остановленном треке, `body.scene` следует за `object.addTo()`, остановленные и завершённые анимации покидают реестр анимаций.
+
 **Новое в 1.1.3** — `game.step(dt?)` для ручных кадров, оверлей ошибок времени выполнения (`game.lastError`, `game.clearError()`, `game.events.on('error')`, `catchErrors: false`), кламп зума в `camera.zoomTo()` и обработка `pointercancel`.
 
 **Новое в 1.1.2** — `camera.panTo(x, y, ms, ease?)`, `game.setPixelArt(bool)`, `game.toggleFullscreen()`, `group.getByName(name)`, `group.getClosest(x, y, aliveOnly?)`, `anims.pauseAll/resumeAll/stopAll`, размер частиц диапазоном `{ min, max }`.
@@ -130,9 +132,9 @@ English (primary): [`../en/index.md`](../en/index.md).
 - Только Canvas 2D: нет WebGL, шейдеров, батчинга и render texture.
 - Физика только AABB: поворот объекта не поворачивает тело, круги сталкиваются как прямоугольники.
 - Одна камера на сцену (`scene.camera`; `scene.cameras` — массив из одного элемента).
-- Нет встроенных текстовых полей, слайдеров, скролл-вью и layout-движка.
+- Нет встроенных текстовых полей, скролл-вью и layout-движка.
 - Нет импорта TMX/Tiled; формат тайлмапов описан в [tilemaps.md](tilemaps.md).
 - Логика и рендер в одном потоке, без воркеров.
 - Переключение сцены уничтожает объекты, твины и таймеры предыдущей сцены.
 
-Версия: **1.2.0** (`Chroms.version`, `Chroms.VERSION`).
+Версия: **1.2.1** (`Chroms.version`, `Chroms.VERSION`).

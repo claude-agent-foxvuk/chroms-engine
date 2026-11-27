@@ -227,7 +227,9 @@
       return this;
     }
     update(dt) {
-      if (this.followTarget) {
+      // A running panTo() owns the camera position; following would overwrite it.
+      const panning = !!this._panTween && this._panTween.state !== 'complete';
+      if (this.followTarget && !panning) {
         const target = this.followTarget;
         const viewWidth = this.width / this.zoom;
         const viewHeight = this.height / this.zoom;

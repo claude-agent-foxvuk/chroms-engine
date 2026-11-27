@@ -7,7 +7,7 @@
       const opts = config || {};
       this.id = uid('body');
       this.object = object;
-      this.scene = object.scene || null;
+      this._scene = object.scene || null;
       this.game = object.game || (object.scene ? object.scene.game : null);
       this.world = null;
       this.offsetX = opts.offsetX || 0;
@@ -38,6 +38,19 @@
       this.onCollide = null;
       this.onWorldBounds = null;
       this.custom = {};
+    }
+
+    /**
+     * Owning scene. Read from the object, so reparenting it with addTo()
+     * keeps the physics scene filter correct.
+     */
+    get scene() {
+      const owner = this.object;
+      if (owner && owner.scene !== undefined) return owner.scene || null;
+      return this._scene;
+    }
+    set scene(value) {
+      this._scene = value || null;
     }
 
     get x() {
