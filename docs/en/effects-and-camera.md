@@ -39,6 +39,7 @@ this.tweens.add({
 | `ease` / `easing` | `'linear'` | Name or function |
 | `yoyo` | `false` | Play back to the start |
 | `repeat` | `0` | Extra cycles; `-1` forever |
+| `repeatDelay` | `0` | Pause between repeats, ms |
 | `hold` | `0` | Pause at the extremes, ms |
 | `paused` | `false` | Create paused |
 | `persist` | `false` | Keep running if targets are destroyed/inactive |
@@ -60,6 +61,19 @@ this.tweens.add({
   'body.velocity.y': -300,
   duration: 300,
   ease: 'back.out'
+});
+```
+
+String properties are tweened as colors when both values are colors — `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(...)` and `rgba(...)` are interpolated channel by channel, so `color` on shapes/text and `backgroundColor` fade smoothly. Other strings keep the two-state behavior (start value for the first half, end value after).
+
+```js
+this.tweens.add({
+  targets: [this.panel, this.label],
+  color: '#f38ba8',
+  duration: 400,
+  yoyo: true,
+  repeat: -1,
+  repeatDelay: 250
 });
 ```
 
@@ -231,6 +245,7 @@ this.camera.follow(this.player, {
 | `zoom` | Scale factor (visible world = `width/zoom`) |
 | `bounds` | Optional world rectangle |
 | `followTarget` | Object being followed |
+| `visible` | `false` skips drawing the whole scene (`sleep()` sets it) |
 | `deadzone` | `{ width, height }` free area around the center |
 | `shakeOffset` | Current shake displacement |
 | `fadeAlpha`, `fadeColor` | Fade overlay state |
@@ -246,7 +261,8 @@ this.camera.follow(this.player, {
 | `setDeadzone(w, h)` | Deadzone in world pixels |
 | `centerOn(x, y)`, `scrollTo(x, y)` | Position the view |
 | `setBounds(x, y, w, h)` / `setBounds({x,y,width,height})`, `clearBounds()` | Limits |
-| `setZoom(z)`, `zoomTo(z, ms, ease?)` | Zoom |
+| `setZoom(z)`, `zoomTo(z, ms, ease?)` | Zoom (clamped to `0.05..20`) |
+| `panTo(x, y, ms, ease?)` | Glide the view to a world position; follow is suspended while it runs |
 | `shake(durationMs, intensityPx)` | Random shake that decays |
 | `fadeOut(ms, color?, callback?)`, `fadeIn(ms, color?, callback?)` | Full-screen fade |
 | `flash(color, ms)` | Full-screen flash |

@@ -37,9 +37,9 @@ The API is **inspired by Phaser 3** — `Scene` subclasses with `preload`/`creat
 </script>
 ```
 
-## What is in 1.1
+## Feature overview
 
-v1.0 was a four-class proof of concept. v1.1 is a complete small engine:
+Chroms started in v1.0 as a four-class proof of concept. The current release covers:
 
 - **Game core** — fixed-step loop, scene registry, fade transitions, loading screen, scaling modes, pause/resume, screenshot, plugins, debug overlay, event bus.
 - **Scenes** — `init → preload → create → update → fixedUpdate → shutdown`, pause/sleep/wake, restart, object factories, groups and containers.
@@ -109,7 +109,7 @@ English (primary):
 - [Assets, audio, storage](docs/en/assets-audio-storage.md)
 - [Tilemaps](docs/en/tilemaps.md)
 - [Guide for AI agents](docs/en/ai-agents.md)
-- [Migrating from 1.0](docs/en/migration.md)
+- [Migration and upgrades](docs/en/migration.md)
 
 Русская документация: [docs/ru/index.md](docs/ru/index.md).
 

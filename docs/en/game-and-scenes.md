@@ -64,6 +64,7 @@ loading: {
 | `width`, `height` | Logical size |
 | `scaleMode`, `pixelRatio` | Rendering setup |
 | `scenes`, `sceneOrder`, `currentScene` | Scene registry |
+| `sceneStack` | Keys of the active scenes, bottom to top |
 | `events` | Game `EventEmitter` |
 | `load` | `AssetLoader` |
 | `input` | `InputManager` |
@@ -77,6 +78,7 @@ loading: {
 | `paused`, `running`, `timeScale` | Loop state |
 | `debug` | Debug object: `enabled`, `showFps`, `showBodies`, `showPointers`, `toggle()`, `draw(ctx)` |
 | `loadingStyle`, `transition` | Loading screen and scene fade state |
+| `lastError` | Last caught error `{ message, stack, phase, frame }`, or `null` |
 | `plugins` | Installed plugins |
 | `scale` | `{ mode, pixelRatio, width, height, resize() }` |
 
@@ -86,11 +88,18 @@ loading: {
 | --- | --- |
 | `addScene(SceneClass)` | Register a scene class or instance |
 | `getScene(key)`, `removeScene(key)` | Look up / remove a scene |
-| `startScene(key, data, { fade, fadeColor })` | Stop the current scene, start another; optional fade in ms |
+| `startScene(key, data, { fade, fadeColor })` | Start a scene and stop the other active ones; optional fade in ms |
+| `launchScene(key, data?)` | Start a scene on top and keep the running ones alive |
+| `getActiveScenes()` | Active scenes, bottom to top |
+| `bringToTop(key?)`, `sendToBack(key?)` | Reorder the active stack |
+| `isActive(key?)` | `true` while the scene is in the active stack |
 | `stopScene(key?)` | Shut down and clean a scene |
 | `pauseScene`, `resumeScene`, `sleepScene`, `wakeScene` | Per-scene state changes |
 | `start()`, `stop()`, `pause()`, `resume()`, `togglePause()` | Loop control |
 | `setTimeScale(value)`, `setBackgroundColor(color)` | Settings |
+| `step(dt?)` | Advance one frame by hand, outside `requestAnimationFrame` |
+| `setPixelArt(bool?)`, `toggleFullscreen()` | Crisp pixel-art mode and fullscreen |
+| `clearError()` | Dismiss the runtime error overlay |
 | `resize()` | Recompute canvas/CSS size |
 | `render()` | Draw the current frame manually |
 | `screenshot(type?)` | Canvas data URL (`'image/png'` by default) |
@@ -109,12 +118,15 @@ loading: {
 | `scene-start` | `scene` |
 | `scene-create` | `scene` |
 | `scene-stop` | `scene` |
+| `scene-launch` | `scene` |
+| `scene-bring-to-top`, `scene-sent-to-back` | `scene` |
 | `scene-load-progress` | `scene`, `0..1` |
 | `load-start`, `load-progress`, `load-complete` | loader payload |
 | `debug-toggle` | `enabled` |
 | `visibility` | `document.hidden` |
 | `resize` | `width`, `height` |
 | `plugin-install` | `name`, `installer` |
+| `error` | `error`, `phase` (`'update'` or `'render'`) |
 | `destroy` | `game` |
 
 ### Scaling
@@ -206,6 +218,10 @@ Override any of: `init(data)`, `preload()`, `create()`, `update(dt)`, `fixedUpda
 | `add.tilemap` | `(dataOrJsonKey, x?, y?)` |
 | `add.button` | `(x, y, width, height, label, options)` |
 | `add.joystick` | `(x, y, options)` |
+| `add.slider` | `(x, y, width, options)` |
+| `add.progressBar` | `(x, y, width, height?, options)` |
+| `add.toggle` | `(x, y, options)` |
+| `add.polygon` | `(x, y, points, options)` |
 | `add.existing` | `(object)` |
 
 All factories add the object to the scene except `add.group().create(...)`, which adds to the group. See [game-objects.md](game-objects.md).
@@ -220,9 +236,13 @@ this.scene.pause();
 this.scene.resume();
 this.scene.sleep();
 this.scene.wake();
+
+this.scene.launch('Hud');       // keep this scene running, add one on top
+this.scene.bringToTop();        // raise this scene in the stack
+this.scene.isActive();          // membership check
 ```
 
-`scene.start`/`restart` go through the game manager, which shuts down and destroys the current scene. With `{ fade }`, a colored overlay fades out, the scene switches, and it fades back in.
+`scene.start`/`restart` go through the game manager, which shuts down and destroys the scene. With `{ fade }`, a colored overlay fades out, the scene switches, and it fades back in.
 
 ### Scene management from the game
 
@@ -234,6 +254,50 @@ game.resumeScene();
 game.sleepScene();
 game.wakeScene();
 ```
+
+### Multiple active scenes
+
+`startScene` keeps its original meaning: it stops every other active scene. `launchScene` adds a scene **on top** of the running ones, which is how you build HUDs, pause menus, minimaps and modal dialogs without unloading the world.
+
+```js
+class World extends Chroms.Scene {
+  create() {
+    this.player = this.add.circle(200, 200, 16, '#89b4fa');
+    this.player.enablePhysics();
+    this.launch('Hud');            // world keeps updating and rendering
+  }
+  update() {
+    if (this.input.isJustDown('Escape')) this.launch('Pause');
+  }
+}
+
+class Pause extends Chroms.Scene {
+  create() {
+    this.panel = this.add.rect(200, 120, 400, 260, 'rgba(17,17,27,0.85)', 12)
+      .setScrollFactor(0);
+    this.add.button(360, 300, 80, 40, 'RESUME', { onClick: () => this.stop() });
+  }
+}
+```
+
+Every scene with status `running` updates and renders in stack order (bottom first), so the top scene draws last. A paused or sleeping scene is skipped and its bodies are frozen; other scenes keep simulating.
+
+Limits worth knowing:
+
+- One shared physics world, so `physics.setBounds()`, gravity and colliders are global to all active scenes.
+- One input pointer: `input.pointer.worldX/worldY` is converted through the camera of the last scene updated in the frame. Put HUD objects in a top scene and give them `setScrollFactor(0)`.
+- Pointer events are not scene-filtered: every object registered with `setInteractive()` is checked, even in a scene that sits under an overlay or is paused. Guard handlers (`if (this.status !== 'running') return;`) or disable input on the scene below when you open a modal.
+- Scenes load one at a time. Calling `launch` while another scene is still in `preload` is not supported; wait for its `create()` (or the `scene-create` event).
+
+### Manual stepping and errors
+
+`game.step(dt)` advances exactly one frame without `requestAnimationFrame` — useful for tests, replays and turn-based games:
+
+```js
+game.step(1 / 60);   // seconds; defaults to game.fixedStep
+```
+
+An exception thrown from `update()` or `render()` is caught, emitted as `error`, drawn as an overlay and pauses the game. Inspect `game.lastError` and dismiss it with `game.clearError()`; after fixing the cause call `game.resume()`. `catchErrors: false` rethrows instead, and `errorOverlay: { show: false }` keeps the catch but skips the drawing.
 
 ### Searching children
 

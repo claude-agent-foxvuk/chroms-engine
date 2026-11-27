@@ -1,4 +1,6 @@
-# Migrating from v1.0 to v1.1
+# Migrating and upgrading
+
+Most of this page covers v1.0 → v1.1, because that release changed behavior. v1.1 → v1.2 was additive: new APIs only, with four small semantic changes listed under [Upgrading from 1.1](#upgrading-from-11).
 
 v1.1 keeps the four public v1.0 concepts (`Chroms.Game`, `Chroms.Scene`, `Chroms.Sprite`, `Chroms.Text`) and the shape of `this.add` / `this.physics`, so most small games run unchanged. This page lists the behavioral differences that can still surprise you.
 
@@ -93,11 +95,23 @@ If v1.0 code relied on scene objects surviving a switch, move that state to `gam
 - `game.pause()` stops simulation but keeps rendering.
 - `game.timeScale`, `game.time`, `game.tweens`, plugins, debug overlay, scaling modes and `screenshot()` are new.
 
+## Upgrading from 1.1
+
+1.2 added multiple active scenes, collision layers, UI widgets, polygons, sprite tints, pointer events on objects, key chords, color tweens, `repeatDelay`, storage snapshots, music pause and tilemap object layers. Existing code keeps working. Check these assumptions:
+
+- **`startScene` is unchanged** — it still stops every other active scene. Overlays, HUDs and pause menus use `launchScene` / `scene.launch` instead; `game.getActiveScenes()` returns the stack.
+- **Physics is scene-aware** — bodies of paused or sleeping scenes are frozen while other scenes keep simulating. Code that paused a scene and still expected its bodies to move must resume it.
+- **`body.scene` is now read from the object** — reparenting with `object.addTo(otherScene)` changes which scene owns the body, so the scene filter follows the move.
+- **Animations unregister on stop and completion** — `anims.sprites` no longer accumulates every sprite that ever played. Inspect `sprite._anim.playing` (or `isPlaying()`) instead of registry membership.
+- **`camera.panTo()` outranks `follow()`** — following is suspended for the duration of the pan and resumes afterwards.
+
+1.2.1 fixed five runtime bugs without API changes: a slept scene now renders after a restart, `panTo` is no longer overwritten by follow, the music-paused flag no longer survives `stopMusic()`, reparented bodies stay in the right scene and stopped or finished animations leave the animation registry.
+
 ## Version checks
 
 ```js
-if (Chroms.version.startsWith('1.1')) {
-  // use v1.1 APIs
+if (Chroms.version.startsWith('1.2')) {
+  // use 1.2 APIs
 }
 ```
 

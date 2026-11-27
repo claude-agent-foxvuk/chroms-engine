@@ -261,7 +261,7 @@
       "events": ["collision", "world-bounds"]
     },
     "Camera": {
-      "properties": ["x", "y", "width", "height", "zoom", "bounds", "followTarget", "lerp", "followOffset", "deadzone", "shakeOffset", "fadeAlpha", "fadeColor", "flashAlpha", "flashColor", "backgroundColor", "worldView"],
+      "properties": ["x", "y", "width", "height", "zoom", "bounds", "followTarget", "lerp", "followOffset", "deadzone", "shakeOffset", "fadeAlpha", "fadeColor", "flashAlpha", "flashColor", "backgroundColor", "visible", "worldView"],
       "methods": ["setBounds(x, y, w, h | object)", "clearBounds()", "setSize(w, h)", "resize(w, h)",         "setZoom(z)", "zoomTo(z, ms, ease?)", "panTo(x, y, ms, ease?)", "setBackgroundColor(color)", "follow(target, options?)", "startFollow(target, options?)", "stopFollow()", "setLerp(x, y?)", "setFollowOffset(x, y?)", "setDeadzone(w, h)", "centerOn(x, y)", "scrollTo(x, y)", "shake(durationMs, intensityPx?)", "fadeOut(ms, color?, callback?)", "fadeIn(ms, color?, callback?)", "flash(color, ms?)", "screenToWorld(x, y)", "worldToScreen(x, y)"]
     },
     "InputManager": {
@@ -296,7 +296,7 @@
     },
     "AnimationManager": {
       "properties": ["anims", "events"],
-      "methods": ["create({ key, frames | spritesheet+start/end, frameRate, repeat, yoyo, onComplete, onFrame })", "exists(key)", "get(key)", "getAll()", "remove(key)",         "play(sprite, key, options?)", "stop(sprite)", "pauseAll()", "resumeAll()", "stopAll()"],
+      "methods": ["create({ key, frames | spritesheet+start/end, frameRate, repeat, yoyo, onComplete, onFrame })", "exists(key)", "get(key)", "getAll()", "remove(key)",         "play(sprite, key, options?)", "stop(sprite) — stops and unregisters", "pauseAll()", "resumeAll()", "stopAll()"],
       "events": ["create", "start", "stop", "pause-all", "resume-all", "stop-all"]
     },
     "Tilemap": {

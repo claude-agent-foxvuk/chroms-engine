@@ -56,7 +56,9 @@ loading: {
 
 ### Свойства
 
-`canvas`, `ctx`, `width`, `height`, `scaleMode`, `pixelRatio`, `scenes`, `sceneOrder`, `currentScene`, `events`, `load`, `input`, `sound`, `physics`, `anims`, `tweens`, `time`, `storage`, `random`, `fps`, `delta`, `elapsed`, `frameCount`, `paused`, `running`, `timeScale`, `debug`, `loadingStyle`, `transition`, `plugins`, `scale`.
+`canvas`, `ctx`, `width`, `height`, `scaleMode`, `pixelRatio`, `scenes`, `sceneOrder`, `sceneStack`, `currentScene`, `events`, `load`, `input`, `sound`, `physics`, `anims`, `tweens`, `time`, `storage`, `random`, `fps`, `delta`, `elapsed`, `frameCount`, `paused`, `running`, `timeScale`, `debug`, `loadingStyle`, `transition`, `lastError`, `plugins`, `scale`.
+
+`sceneStack` — ключи активных сцен снизу вверх; `lastError` — последняя пойманная ошибка `{ message, stack, phase, frame }` или `null`.
 
 ### Методы
 
@@ -64,11 +66,18 @@ loading: {
 | --- | --- |
 | `addScene(SceneClass)` | Зарегистрировать класс/экземпляр сцены |
 | `getScene(key)`, `removeScene(key)` | Получить / удалить сцену |
-| `startScene(key, data, { fade, fadeColor })` | Остановить текущую и запустить другую; fade в мс |
+| `startScene(key, data, { fade, fadeColor })` | Запустить сцену, остановив остальные активные; fade в мс |
+| `launchScene(key, data?)` | Запустить сцену поверх работающих, не останавливая их |
+| `getActiveScenes()` | Активные сцены снизу вверх |
+| `bringToTop(key?)`, `sendToBack(key?)` | Переставить сцену в стеке |
+| `isActive(key?)` | `true`, пока сцена в активном стеке |
 | `stopScene(key?)` | Остановить и очистить сцену |
 | `pauseScene`, `resumeScene`, `sleepScene`, `wakeScene` | Состояния сцен |
 | `start`, `stop`, `pause`, `resume`, `togglePause` | Управление циклом |
 | `setTimeScale`, `setBackgroundColor` | Настройки |
+| `step(dt?)` | Провести один кадр вручную, без `requestAnimationFrame` |
+| `setPixelArt(bool?)`, `toggleFullscreen()` | Пиксельный режим и полный экран |
+| `clearError()` | Убрать оверлей ошибки |
 | `resize()` | Пересчитать холст и CSS |
 | `render()` | Нарисовать кадр вручную |
 | `screenshot(type?)` | Data URL (`image/png`) |
@@ -78,7 +87,7 @@ loading: {
 
 ### События
 
-`ready`, `start`, `stop`, `pause`, `resume`, `preupdate`, `postupdate`, `scene-added`, `scene-start`, `scene-create`, `scene-stop`, `scene-load-progress`, `load-start`, `load-progress`, `load-complete`, `debug-toggle`, `visibility`, `resize`, `plugin-install`, `destroy`.
+`ready`, `start`, `stop`, `pause`, `resume`, `preupdate`, `postupdate`, `scene-added`, `scene-start`, `scene-create`, `scene-stop`, `scene-launch`, `scene-bring-to-top`, `scene-sent-to-back`, `scene-load-progress`, `load-start`, `load-progress`, `load-complete`, `debug-toggle`, `visibility`, `resize`, `plugin-install`, `error` (`error`, `phase`), `destroy`.
 
 ### Масштаб
 
@@ -158,6 +167,10 @@ super({ key: 'PlayScene', updateChildren: false });
 | `add.tilemap` | `(dataOrJsonKey, x?, y?)` |
 | `add.button` | `(x, y, width, height, label, options)` |
 | `add.joystick` | `(x, y, options)` |
+| `add.slider` | `(x, y, width, options)` |
+| `add.progressBar` | `(x, y, width, height?, options)` |
+| `add.toggle` | `(x, y, options)` |
+| `add.polygon` | `(x, y, points, options)` |
 | `add.existing` | `(object)` |
 
 ### Навигация и состояние
@@ -170,6 +183,10 @@ this.scene.pause();
 this.scene.resume();
 this.scene.sleep();
 this.scene.wake();
+
+this.scene.launch('Hud');   // оставить эту сцену работать, добавить сверху
+this.scene.bringToTop();    // поднять сцену в стеке
+this.scene.isActive();      // проверка членства
 ```
 
 `start`/`restart` идут через менеджер игры: текущая сцена получает `shutdown`, её объекты уничтожаются. С `{ fade }` появляется затухание, затем переключение и проявление.
@@ -180,6 +197,50 @@ game.stopScene('PlayScene');
 game.pauseScene();
 game.resumeScene();
 ```
+
+### Несколько активных сцен
+
+`startScene` сохраняет прежний смысл: он останавливает все остальные активные сцены. `launchScene` добавляет сцену **поверх** работающих — так делают HUD, меню паузы, миникарты и модальные окна, не выгружая мир.
+
+```js
+class World extends Chroms.Scene {
+  create() {
+    this.player = this.add.circle(200, 200, 16, '#89b4fa');
+    this.player.enablePhysics();
+    this.launch('Hud');            // мир продолжает обновляться и рисоваться
+  }
+  update() {
+    if (this.input.isJustDown('Escape')) this.launch('Pause');
+  }
+}
+
+class Pause extends Chroms.Scene {
+  create() {
+    this.add.rect(200, 120, 400, 260, 'rgba(17,17,27,0.85)', 12)
+      .setScrollFactor(0);
+    this.add.button(360, 300, 80, 40, 'ДАЛЬШЕ', { onClick: () => this.stop() });
+  }
+}
+```
+
+Каждая сцена в статусе `running` обновляется и рисуется в порядке стека (снизу вверх): верхняя рисуется последней. Приостановленные и спящие сцены пропускаются, их тела заморожены, остальные продолжают симуляцию.
+
+Важные ограничения:
+
+- Один общий физический мир: `physics.setBounds()`, гравитация и коллайдеры глобальны для всех активных сцен.
+- Один указатель: `input.pointer.worldX/worldY` пересчитывается через камеру последней обновлённой сцены. HUD держите в верхней сцене с `setScrollFactor(0)`.
+- События указателя не фильтруются по сценам: проверяются все объекты, зарегистрированные через `setInteractive()`, даже в сцене под оверлеем или на паузе. Защищайте обработчики (`if (this.status !== 'running') return;`) или отключайте ввод нижней сцены, пока открыто модальное окно.
+- Сцены грузятся по одной. `launch` во время `preload` другой сцены не поддерживается — дождитесь её `create()` или события `scene-create`.
+
+### Ручной шаг и ошибки
+
+`game.step(dt)` проводит ровно один кадр без `requestAnimationFrame` — для тестов, реплеев и пошаговых игр:
+
+```js
+game.step(1 / 60);   // секунды; по умолчанию game.fixedStep
+```
+
+Исключение из `update()` или `render()` перехватывается, шлётся событием `error`, рисуется оверлеем и ставит игру на паузу. Смотрите `game.lastError` и закрывайте через `game.clearError()`; после исправления вызовите `game.resume()`. `catchErrors: false` пробрасывает ошибку дальше, а `errorOverlay: { show: false }` оставляет перехват без отрисовки.
 
 ### Поиск детей
 

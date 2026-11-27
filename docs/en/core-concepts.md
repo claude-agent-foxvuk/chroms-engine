@@ -15,6 +15,8 @@ The game runs a single `requestAnimationFrame` loop. Each frame:
 9. Global tweens/timers update.
 10. The scene renders and input frame edges are cleared.
 
+With more than one active scene (`scene.launch`), steps 3–8 run for every running scene in `game.sceneStack` order, bottom to top; `game.currentScene` is the top one. Paused and sleeping scenes are skipped and their bodies are frozen.
+
 Because physics runs after `scene.update`, velocities set in `update()` are applied in the same frame's physics step and are visible in the render that follows. Collision callbacks also fire after `update()`.
 
 ## Units and coordinates

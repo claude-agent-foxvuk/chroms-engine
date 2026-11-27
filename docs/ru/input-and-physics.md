@@ -37,6 +37,22 @@ update() {
 
 Методы: `addAction`, `setKeybinding`, `actionDown`, `actionJustDown`, `actionJustUp`. Менеджер ввода и игра шлют `action-down` / `action-up` с `(name, code)`.
 
+### Комбинации клавиш
+
+Действия — это список «ИЛИ» (достаточно любой клавиши). Комбинации — «И» (нужны все):
+
+```js
+this.input.addKeyCombo('dash', ['ShiftLeft', 'KeyD']);
+this.input.addKeyCombo('screenshot', ['ControlLeft', 'ShiftLeft', 'KeyS']);
+
+update() {
+  if (this.input.keyComboDown('dash')) this.dash();
+  if (this.input.keyComboJustDown('screenshot')) this.saveShot();
+}
+```
+
+`keyComboDown` срабатывает постоянно, пока комбинация удерживается; `keyComboJustDown` — в кадр, когда комбинация стала полной.
+
 ### Перехват клавиш
 
 ```js
@@ -54,6 +70,7 @@ p.isDown;
 p.justDown;
 p.justUp;
 p.downTime;
+p.button;             // 0 — левая, 1 — средняя, 2 — правая
 this.input.wheelDelta;
 this.input.pointers;  // Map<pointerId, {x, y, isDown}>
 ```
@@ -88,6 +105,28 @@ this.input.disableDrag(this.card);
 ```
 
 HUD-объекты перетаскиваются в экранных координатах, мировые — в мировых. Физические ограничения не применяются: объект позиционируется напрямую.
+
+### Интерактивные объекты
+
+Любой объект может слать события указателя без обёртки `Button`:
+
+```js
+const card = this.add.rect(200, 160, 120, 160, '#313244', 10)
+  .setScrollFactor(0)
+  .setInteractive({
+    onClick: (object, pointer) => this.playCard(object),
+    onHover: (object) => object.setScale(1.05),
+    onOut: (object) => object.setScale(1),
+    onDown: (object) => object.setAlpha(0.85),
+    onUp: (object) => object.setAlpha(1),
+    hitArea: (x, y) => x >= 0 && y >= 0 && x <= 120 && y <= 160   // локальные px
+  });
+
+card.isHovered;          // синхронизируется менеджером ввода
+card.disableInteractive();
+```
+
+События: `pointerover`, `pointerout`, `pointerdown`, `pointerup`, `click` — на объекте с `(object, pointer)`. Попадание считается по боксу объекта, если не задан `hitArea` (`offsetX`/`offsetY` сдвигают бокс). `destroy()` снимает регистрацию сам. Объекты внутри `Container` проверяются в локальных координатах, поэтому задавайте им `hitArea` или держите у начала контейнера.
 
 ## Геймпад
 
@@ -131,6 +170,8 @@ player.enablePhysics({
 | `collideWorldBounds` | `false` | Ограничение `physics.bounds` |
 | `isSensor` | `false` | Только пересечения, без расталкивания |
 | `isCircle` | `false` | Флаг хранения; **коллизия всё равно AABB** |
+| `collisionGroup` | `null` | Имя слоя для масок и матрицы коллизий |
+| `collidesWith` | `null` | Массив, `Set` или `'*'` групп, с которыми тело может сталкиваться |
 | `enabled` | `true` | Временно выключить |
 
 ### API тела
@@ -149,6 +190,11 @@ body.setCollideWorldBounds(true);
 body.setSensor(false);
 body.setEnabled(false);
 body.setSize(28, 46).setOffset(2, 2);
+
+body.setCollisionGroup('player');
+body.setCollidesWith(['enemy']);      // массив, Set или '*'
+body.setVelocityFromAngle(-90, 300);  // градусы, скорость
+body.scene;                           // сцена-владелец; следует за object.addTo()
 
 body.speed;
 body.centerX, body.centerY;
@@ -171,6 +217,22 @@ this.physics.timeScale = 0.5;
 this.physics.enabled = false;
 this.physics.debug = true;
 ```
+
+Слои коллизий и наведение:
+
+```js
+this.physics.setCollisionMatrix({
+  player: ['enemy', 'wall'],
+  enemy: ['player', 'wall'],
+  bullet: ['enemy'],
+  wall: '*'
+});
+
+this.physics.moveTo(this.enemy, this.player.x, this.player.y, 180);
+this.enemy.body.setVelocityFromAngle(45, 240);
+```
+
+`setCollisionMatrix(null)` очищает маску. Тела без группы считаются `'default'`; тело с `collidesWith` игнорирует группы, которых нет в списке. Когда сцена на паузе или спит, `physics.step()` пропускает её тела автоматически.
 
 Свойства: `gravity`, `bounds`, `bodies`, `colliders`, `fixedStep`, `maxSubSteps`, `enabled`, `timeScale`, `stats`. События: `collision`, `world-bounds`.
 

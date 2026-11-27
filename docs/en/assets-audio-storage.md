@@ -137,6 +137,16 @@ this.sound.setMasterVolume(0.9);
 
 Only one music handle is tracked (`sound.music`, `sound.musicKey`). `musicPlay` stops the previous track; `fade` is in milliseconds.
 
+Pause and resume keep the playback position, which is what a settings menu or a tab switch needs:
+
+```js
+this.sound.musicPause();
+this.sound.musicResume();
+this.sound.isMusicPlaying();   // true only while a track exists and is not paused
+```
+
+Stopping a paused track clears the flag, so the next `musicPlay()` starts in a playing state.
+
 ### Mute and volume
 
 ```js
@@ -188,6 +198,18 @@ new Chroms.Game({ storagePrefix: 'my-game', /* ... */ });
 ```
 
 Values are JSON-serialized. `localStorage` failures (private mode, quota, `file://` restrictions) fall back to an in-memory `Map`; the data then lasts for the page session only. Check `game.storage.available`.
+
+### Snapshots
+
+`export()` returns every value under the prefix as a plain object; `import()` writes one back. Useful for save files, cloud sync and tests:
+
+```js
+const snapshot = game.storage.export();
+// { profile: {...}, 'slot-1': {...} }
+
+game.storage.import(snapshot);            // merge into the current storage
+game.storage.import(snapshot, true);       // replace: clears the prefix first
+```
 
 ### Save slots recipe
 

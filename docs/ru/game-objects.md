@@ -36,9 +36,9 @@ box.setPosition(200, 150)
 
 ### Методы
 
-`setPosition`, `setX`, `setY`, `setSize`, `setScale`, `setOrigin`, `setAngle(deg)`, `setRotation(rad)`, `setAlpha`, `setVisible`, `setActive`, `setDepth`, `setBlendMode`, `setScrollFactor(x, y?)`, `setName`, `setData`, `getData`, `hasData`, `incData`, `addTo(scene)`, `enablePhysics(config?)`, `disablePhysics`, `setVelocity`, `setVelocityX/Y`, `setAcceleration`, `setDrag`, `setBounce`, `setGravityY`, `setImmovable`, `setMaxVelocity`, `setCollideWorldBounds`, `setDraggable(bool, options?)`, `getBounds`, `distanceTo`, `angleTo`, `destroy`.
+`setPosition`, `setX`, `setY`, `setSize`, `setScale`, `setOrigin`, `setAngle(deg)`, `setRotation(rad)`, `setAlpha`, `setVisible`, `setActive`, `setDepth`, `setBlendMode`, `setScrollFactor(x, y?)`, `setName`, `setData`, `getData`, `hasData`, `incData`, `addTo(scene)`, `enablePhysics(config?)`, `disablePhysics`, `setVelocity`, `setVelocityX/Y`, `setAcceleration`, `setDrag`, `setBounce`, `setGravityY`, `setImmovable`, `setMaxVelocity`, `setCollideWorldBounds`, `setDraggable(bool, options?)`, `setInteractive(options?)`, `disableInteractive()`, `getBounds`, `distanceTo`, `angleTo`, `destroy`.
 
-События: `destroy`, `collide`, `overlap`, `tile-collide`, `animationstart`, `animationframe`, `animationcomplete`, `typecomplete`.
+События: `destroy`, `collide`, `overlap`, `tile-collide`, `animationstart`, `animationframe`, `animationcomplete`, `typecomplete`, а после `setInteractive` — ещё `pointerover`, `pointerout`, `pointerdown`, `pointerup`, `click`.
 
 ## Sprite
 
@@ -56,7 +56,9 @@ placeholder.setTexture('hero');
 
 Ключ текстуры ищется так: кадр спрайт-листа → кадр атласа → обычное изображение → CSS-цвет. Если изображения нет, рисуется прямоугольник указанным цветом — прототипы работают без ассетов.
 
-Свойства/методы: `texture`, `frame`, `setTexture(key, frame?)`, `setFrame`, `flipX/Y`, `setFlip`, `play(key, { ignoreIfPlaying })`, `stop`, `pause`, `resume`, `isPlaying`.
+Свойства/методы: `texture`, `frame`, `setTexture(key, frame?)`, `setFrame`, `flipX/Y`, `setFlip`, `play(key, { ignoreIfPlaying })`, `stop`, `pause`, `resume`, `isPlaying`, `setTint(color)`, `clearTint()`, `tint`.
+
+`setTint` перекрашивает спрайт в плоский цвет (кэшируется на кадр текстуры), `clearTint()` возвращает исходные цвета.
 
 ## Анимации
 
@@ -86,7 +88,9 @@ this.hero.play('run');
 
 `repeat` — число **дополнительных** циклов (0 — один раз). `frameRate` — кадров в секунду. Номера кадров — индексы спрайт-листа (для атласов `gid - firstgid`). У каждого спрайта своё состояние анимации.
 
-Методы: `create`, `exists`, `get`, `getAll`, `remove`, `play(sprite, key, options)`, `stop(sprite)`. События: `create`, `start`, `stop`.
+Методы: `create`, `exists`, `get`, `getAll`, `remove`, `play(sprite, key, options)`, `stop(sprite)`, `pauseAll`, `resumeAll`, `stopAll`. События: `create`, `start`, `stop`.
+
+Спрайт покидает реестр при уничтожении, при `stop()` (на спрайте или через `anims.stop()`) и при завершении конечной анимации. Поэтому `pauseAll()`/`resumeAll()` проходят только по реально играющим анимациям, а пулинг не растит `anims.sprites`.
 
 ## Text
 
@@ -147,6 +151,21 @@ line.setPoints(20, 20, 220, 220);
 
 У `Circle` `x, y` — левый верхний угол описанного квадрата, `width = height = 2 * radius`. У `Line` координаты абсолютные, `x/y` пересчитывается в минимальный угол.
 
+### Polygon
+
+Произвольная замкнутая или открытая фигура. Точки локальные, нормализуются так, что левый верхний угол объекта — `(0, 0)`; `width`/`height` берутся из bounding box.
+
+```js
+const star = this.add.polygon(300, 200, [
+  [0, -40], [12, -12], [42, -12], [18, 6], [26, 36],
+  [0, 18], [-26, 36], [-18, 6], [-42, -12], [-12, -12]
+], { color: '#f9e2af', stroke: '#11111b', strokeWidth: 2 });
+
+star.containsPoint(300, 200);   // локальные координаты
+star.getArea();
+star.setPoints(next);
+```
+
 ## TileSprite
 
 Повторяющаяся текстура с обрезкой:
@@ -198,6 +217,62 @@ this.physics.overlapPair(bullets, enemies, (bullet, enemy) => {
 ```
 
 Методы: `create`, `add`, `addMultiple`, `remove`, `clear`, `getChildren`, `getFirst`, `getLast`, `getRandom`, `countActive`, `contains`, `forEach`, `filter`, `find`, `length`. При добавлении в группу объект убирается из `scene.children`.
+
+## UI-виджеты
+
+### Slider
+
+```js
+const volume = this.add.slider(300, 500, 220, {
+  min: 0,
+  max: 1,
+  value: 0.6,
+  step: 0.05,
+  fillColor: '#a6e3a1',
+  onChange: (value, slider) => this.sound.setMasterVolume(value)
+}).setScrollFactor(0);
+
+volume.setValue(0.3);          // silent: true пропускает onChange
+volume.setRange(0, 2);
+volume.setEnabled(false);
+```
+
+`width` — длина дорожки, `height` по умолчанию 20. Тяните ползунок или кликните по дорожке. `step: 0` — непрерывно, `vertical: true` — вертикально, `knobRadius` меняет размер ползунка.
+
+### ProgressBar
+
+Только для чтения, значение `0..1` — здоровье, загрузка, кулдауны.
+
+```js
+const hp = this.add.progressBar(20, 660, 240, 14, {
+  value: 1,
+  fillColor: '#f38ba8',
+  trackColor: 'rgba(255,255,255,0.12)',
+  radius: 7
+}).setScrollFactor(0);
+
+hp.setValue(0.45);      // клампится в 0..1
+hp.setColors('#a6e3a1');
+hp.setProgress(0.8);    // алиас
+```
+
+### Toggle
+
+Двухпозиционный переключатель с анимацией ползунка.
+
+```js
+const music = this.add.toggle(300, 540, {
+  value: true,
+  onColor: '#a6e3a1',
+  onChange: (on) => (on ? this.sound.musicResume() : this.sound.musicPause())
+}).setScrollFactor(0);
+
+music.toggle();
+music.setValue(false);   // silent: true пропускает onChange
+music.getValue();
+```
+
+`width`/`height` по умолчанию `54`/`28`. Отключённые виджеты рисуются, но не реагируют на ввод.
 
 ## Button
 

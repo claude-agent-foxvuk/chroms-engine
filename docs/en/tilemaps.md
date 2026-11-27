@@ -1,6 +1,6 @@
 # Tilemaps
 
-Chroms renders JSON tilemaps with multiple layers, color tiles or sprite-sheet tiles, and AABB collision against solid tiles. The parser is intentionally small; there is no TMX/Tiled importer and no object layer support.
+Chroms renders JSON tilemaps with multiple layers, color tiles or sprite-sheet tiles, and AABB collision against solid tiles. Layers may also carry object metadata (spawn points, doors, triggers) that you read at runtime. The parser is intentionally small: there is no TMX/Tiled importer.
 
 ## Map format
 
@@ -65,6 +65,8 @@ create() {
 | Member | Description |
 | --- | --- |
 | `getLayer(name)` | Layer object (defaults to first) |
+| `getObjects(layer?)` | Object entries of that layer (defaults to the first layer) |
+| `getObjectByName(name)` | First object with that `name`, searching layers in order |
 | `getTileAt(layer, tileX, tileY)` | gid or `null` |
 | `setTileAt(layer, tileX, tileY, gid)` | Edit one tile |
 | `getTileAtWorld(x, y, layer)` | gid at a world point |
@@ -81,6 +83,34 @@ create() {
 | `events` | Emits `tile-collision(object, tile)` |
 
 Rendering is culled to `scene.camera.worldView`, so large maps only draw visible tiles.
+
+### Object layers
+
+Objects are plain data on a layer — Chroms does not draw them, you decide what they mean:
+
+```js
+layers: [
+  { name: 'walls', data: wallGids, solid: true },
+  {
+    name: 'objects',
+    data: [],
+    objects: [
+      { name: 'spawn', x: 96, y: 320 },
+      { name: 'door', x: 640, y: 288, to: 'level-2' },
+      { name: 'coin', x: 220, y: 260, value: 5 }
+    ]
+  }
+]
+
+const spawn = map.getObjectByName('spawn');
+this.player.setPosition(spawn.x, spawn.y);
+
+map.getObjects('objects').forEach((entry) => {
+  if (entry.name === 'coin') this.add.circle(entry.x, entry.y, 8, '#f9e2af');
+});
+```
+
+Coordinates are already in world pixels relative to the map's `x`/`y`, so they can be used as-is. Tiled's object `properties` object is accepted as-is too; read it as `entry.properties.someKey`.
 
 ## Physics integration
 
@@ -175,6 +205,6 @@ if (tile) {
 ## Limits
 
 - One tileset per map, no per-layer tilesets, animation frames, tile properties or flipped tiles.
-- No object layers, image layers or Tiled `.tmx` parsing.
+- Object layers are read-only metadata: Chroms does not render them, and there are no image layers or Tiled `.tmx` parsing.
 - Collision is tile-rect vs object-rect (AABB); diagonal/one-way tiles are not built in.
 - Very large maps still cost one array entry per tile; layers are plain JS arrays.

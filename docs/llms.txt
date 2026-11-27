@@ -223,7 +223,8 @@ JSON/text/atlas URLs need HTTP; images/audio work on file://.
 
 scene.anims.create({ key, spritesheet?, frames: [indices] | {start,end}, frameRate, repeat, yoyo }).
 sprite.play(key, { ignoreIfPlaying }), stop, pause, resume, isPlaying.
-scene.anims.pauseAll(), resumeAll(), stopAll(). Destroyed sprites leave the registry automatically.
+scene.anims.pauseAll(), resumeAll(), stopAll(). Sprites leave the registry on destroy, on stop() and when a finite animation finishes,
+so pauseAll/resumeAll only walk animations that are actually playing.
 sprite.setTexture(key, frame?), setFrame(frame), setFlip(x,y?).
 
 ## Audio

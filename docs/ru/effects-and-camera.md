@@ -39,6 +39,7 @@ this.tweens.add({
 | `ease` / `easing` | `'linear'` | Имя или функция |
 | `yoyo` | `false` | Обратно к старту |
 | `repeat` | `0` | Дополнительные циклы; `-1` — бесконечно |
+| `repeatDelay` | `0` | Пауза между повторами, мс |
 | `hold` | `0` | Пауза в крайних точках, мс |
 | `paused` | `false` | Создать на паузе |
 | `persist` | `false` | Не останавливать при уничтожении цели |
@@ -60,6 +61,19 @@ this.tweens.add({
   'body.velocity.y': -300,
   duration: 300,
   ease: 'back.out'
+});
+```
+
+Строковые свойства, если обе величины — цвета, интерполируются поканально: `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb(...)` и `rgba(...)`. Поэтому `color` у фигур/текста и `backgroundColor` плавно перетекают, а не переключаются на середине. Остальные строки сохраняют двухсостоянийное поведение.
+
+```js
+this.tweens.add({
+  targets: [this.panel, this.label],
+  color: '#f38ba8',
+  duration: 400,
+  yoyo: true,
+  repeat: -1,
+  repeatDelay: 250
 });
 ```
 
@@ -230,6 +244,7 @@ this.camera.follow(this.player, {
 | `zoom` | Масштаб (видимый мир = `width/zoom`) |
 | `bounds` | Прямоугольник ограничения |
 | `followTarget` | Цель слежения |
+| `visible` | `false` не рисует сцену целиком (выставляется `sleep()`) |
 | `deadzone` | `{ width, height }` вокруг центра |
 | `shakeOffset` | Текущее смещение тряски |
 | `fadeAlpha`, `fadeColor` | Затухание |
@@ -245,7 +260,8 @@ this.camera.follow(this.player, {
 | `setDeadzone(w, h)` | Мёртвая зона в мировых пикселях |
 | `centerOn(x, y)`, `scrollTo(x, y)` | Позиция вида |
 | `setBounds(...)`, `clearBounds()` | Границы |
-| `setZoom(z)`, `zoomTo(z, ms, ease?)` | Зум |
+| `setZoom(z)`, `zoomTo(z, ms, ease?)` | Зум (клампится в `0.05..20`) |
+| `panTo(x, y, ms, ease?)` | Плавно увести вид в мировую точку; follow приостанавливается на время панорамы |
 | `shake(durationMs, intensityPx)` | Затухающая тряска |
 | `fadeOut(ms, color?, cb?)`, `fadeIn(ms, color?, cb?)` | Затемнение/проявление |
 | `flash(color, ms)` | Вспышка |

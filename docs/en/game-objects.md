@@ -49,11 +49,12 @@ box.setPosition(200, 150)
 | `disablePhysics()` | Remove the body |
 | `setVelocity`, `setVelocityX/Y`, `setAcceleration`, `setDrag`, `setBounce`, `setGravityY`, `setImmovable`, `setMaxVelocity`, `setCollideWorldBounds` | Physics shortcuts; create a body on demand |
 | `setDraggable(bool, options?)` | Pointer drag |
+| `setInteractive(options?)`, `disableInteractive()` | Emit pointer events on this object; `isHovered` stays in sync |
 | `getBounds()` | Display AABB |
 | `distanceTo(target)`, `angleTo(target)` | Helpers (accept object or `[x, y]`) |
 | `destroy()` | Remove from scene/parent/group, destroy body, emit `destroy` |
 
-Object events: `destroy`, `collide` (other), `overlap` (other), `tile-collide` (tilemap, count), `animationstart`, `animationframe`, `animationcomplete`, `typecomplete`.
+Object events: `destroy`, `collide` (other), `overlap` (other), `tile-collide` (tilemap, count), `animationstart`, `animationframe`, `animationcomplete`, `typecomplete`, `pointerover`, `pointerout`, `pointerdown`, `pointerup`, `click` (the last five only after `setInteractive`).
 
 ## Sprite
 
@@ -77,6 +78,8 @@ placeholder.setFlip(true, false);
 | `flipX`, `flipY`, `setFlip(x, y?)` | Mirror drawing |
 | `play(key, { ignoreIfPlaying })` | Play a registered animation |
 | `stop()`, `pause()`, `resume()`, `isPlaying(key?)` | Animation control |
+| `setTint(color)`, `clearTint()` | Flat color tint, cached per texture frame |
+| `tint` | Current tint color or `null` |
 
 A texture key is resolved as: sprite-sheet frame → atlas frame → plain image → CSS color fallback. If no image is loaded, the engine fills a rectangle with the texture string as its color, which keeps prototypes runnable without assets.
 
@@ -109,7 +112,9 @@ this.hero.play('run');
 
 `repeat` counts **additional** loops (0 plays once, 1 plays twice or until yoyo returns). `frameRate` is frames per second. Frame numbers are indices into the loaded sprite sheet (`gid - firstgid` for atlases). Each sprite has independent animation state, so many sprites can play the same animation.
 
-Methods: `create`, `exists`, `get`, `getAll`, `remove`, `play(sprite, key, options)`, `stop(sprite)`. Events: `create`, `start`, `stop`.
+Methods: `create`, `exists`, `get`, `getAll`, `remove`, `play(sprite, key, options)`, `stop(sprite)`, `pauseAll`, `resumeAll`, `stopAll`. Events: `create`, `start`, `stop`.
+
+Sprites leave the registry when they are destroyed, when `stop()` is called (on the sprite or through `anims.stop()`), and when a finite animation finishes. `anims.pauseAll()`/`resumeAll()` therefore only walk animations that are actually playing, which keeps pooled sprites from accumulating.
 
 ## Text
 
@@ -188,6 +193,23 @@ const line = this.add.line(20, 20, 220, 120, '#89b4fa', 3);
 line.setPoints(20, 20, 220, 220);
 ```
 
+### Polygon
+
+An arbitrary closed or open shape. Points are local and normalized so the object's top-left is `(0, 0)`; `width`/`height` come from the points' bounding box.
+
+```js
+const star = this.add.polygon(300, 200, [
+  [0, -40], [12, -12], [42, -12], [18, 6], [26, 36],
+  [0, 18], [-26, 36], [-18, 6], [-42, -12], [-12, -12]
+], { color: '#f9e2af', stroke: '#11111b', strokeWidth: 2 });
+
+star.containsPoint(300, 200);   // local coordinates
+star.getArea();
+star.setPoints(next);
+```
+
+A polygon can be made interactive with a `hitArea` function of your own, or tested directly with `containsPoint()` in a `pointerdown` handler.
+
 ## TileSprite
 
 A clipped, repeating texture:
@@ -246,6 +268,62 @@ this.physics.overlapPair(bullets, enemies, (bullet, enemy) => {
 Methods: `create(x, y, w, h, texture)`, `add`, `addMultiple`, `remove(child, destroyChild?)`, `clear(destroyChildren?)`, `getChildren`, `getFirst(aliveOnly?)`, `getLast`, `getRandom`, `countActive(value?)`, `contains`, `forEach`, `filter`, `find`, `length`.
 
 Group children are removed from `scene.children` when added to the group. Set up bodies per child with `enablePhysics()`.
+
+## UI widgets
+
+### Slider
+
+```js
+const volume = this.add.slider(300, 500, 220, {
+  min: 0,
+  max: 1,
+  value: 0.6,
+  step: 0.05,
+  fillColor: '#a6e3a1',
+  onChange: (value, slider) => this.sound.setMasterVolume(value)
+}).setScrollFactor(0);
+
+volume.setValue(0.3);          // silent: true skips onChange
+volume.setRange(0, 2);
+volume.setEnabled(false);
+```
+
+`width` is the track length, `height` defaults to 20. Drag the knob or click anywhere on the track. `step: 0` means continuous. `vertical: true` turns the track upright; `knobRadius` overrides the knob size.
+
+### ProgressBar
+
+A read-only 0..1 bar — health, loading, cooldowns.
+
+```js
+const hp = this.add.progressBar(20, 660, 240, 14, {
+  value: 1,
+  fillColor: '#f38ba8',
+  trackColor: 'rgba(255,255,255,0.12)',
+  radius: 7
+}).setScrollFactor(0);
+
+hp.setValue(0.45);      // clamped to 0..1
+hp.setColors('#a6e3a1');
+hp.setProgress(0.8);    // alias
+```
+
+### Toggle
+
+A two-state switch whose knob animates on change.
+
+```js
+const music = this.add.toggle(300, 540, {
+  value: true,
+  onColor: '#a6e3a1',
+  onChange: (on) => (on ? this.sound.musicResume() : this.sound.musicPause())
+}).setScrollFactor(0);
+
+music.toggle();
+music.setValue(false);   // silent: true skips onChange
+music.getValue();
+```
+
+`width`/`height` default to `54`/`28`. Disabled widgets still render but ignore input.
 
 ## Button
 

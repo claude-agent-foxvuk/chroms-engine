@@ -93,17 +93,17 @@ python -m http.server 8080
 | [Getting started](getting-started.md) | Files, scene skeleton, first platformer, assets, UI |
 | [Core concepts](core-concepts.md) | Lifecycle, loop, coordinates, origin, depth, screen space, units |
 | [Game & scenes](game-and-scenes.md) | `Game` config/methods/events, loading, scaling, scene manager, groups |
-| [Game objects](game-objects.md) | Sprite, Text, shapes, TileSprite, Container, Group, Button, Joystick, animations |
-| [Input & physics](input-and-physics.md) | Keyboard/actions/pointer/gamepad, bodies, colliders, raycasts, tile collision |
+| [Game objects](game-objects.md) | Sprite, Text, shapes (incl. Polygon), TileSprite, Container, Group, Button, Joystick, slider/progress/toggle, animations |
+| [Input & physics](input-and-physics.md) | Keyboard/chords/pointer/gamepad, interactive objects, bodies, collision layers, colliders, raycasts, tile collision |
 | [Effects & camera](effects-and-camera.md) | Tweens, easings, timelines, timers, particles, camera follow/shake/fade |
 | [Assets, audio, storage](assets-audio-storage.md) | Loader queues, progress, sheets/atlases, music/SFX, `game.storage` |
 | [Tilemaps](tilemaps.md) | Map format, layers, rendering, solid tiles, dynamic edits |
 | [AI agents](ai-agents.md) | Recommended reading order, invariants, code recipes, validation loop |
-| [Migration 1.0 → 1.1](migration.md) | Compatibility notes and behavior changes |
+| [Migration and upgrades](migration.md) | 1.0 → 1.1 behavior changes and 1.1 → 1.2 notes |
 
 Russian translation: [`../ru/index.md`](../ru/index.md).
 
-## The 1.1 feature map
+## Feature map
 
 **Core** — `Chroms.Game`, fixed physics stepping, `requestAnimationFrame` loop, scene registry, fade transition, loading overlay, scale modes (`fit`, `letterbox`, `stretch`, `none`), pause/resume, speed control, screenshot, plugins, event bus, debug overlay.
 
@@ -140,6 +140,7 @@ Chroms targets current evergreen browsers. It deliberately stays small:
 - No TMX/Tiled file parser; tilemaps use the JSON format in [tilemaps.md](tilemaps.md).
 - Rendering and logic share one thread; no workers.
 - Scene switching destroys the previous scene's objects, tweens and timers.
+- All active scenes share one physics world and one input pointer; `input.pointer.worldX/worldY` belongs to the last scene updated in the frame.
 
 ## Version
 

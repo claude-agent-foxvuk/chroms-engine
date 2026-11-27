@@ -39,6 +39,22 @@ update() {
 
 Methods: `addAction(name, codes)`, `setKeybinding(name, codes)`, `actionDown`, `actionJustDown`, `actionJustUp`. The input manager and the game emit `action-down` / `action-up` with `(name, code)`.
 
+### Key chords
+
+Actions are OR-lists (any listed key presses the action). Chords are AND-lists (every key must be held):
+
+```js
+this.input.addKeyCombo('dash', ['ShiftLeft', 'KeyD']);
+this.input.addKeyCombo('screenshot', ['ControlLeft', 'ShiftLeft', 'KeyS']);
+
+update() {
+  if (this.input.keyComboDown('dash')) this.dash();
+  if (this.input.keyComboJustDown('screenshot')) this.saveShot();
+}
+```
+
+`keyComboDown` is level-triggered; `keyComboJustDown` is true on the frame the chord becomes complete (or when an already-held chord gains a key).
+
 ### Capturing keys
 
 Browsers scroll with arrows and space. Capture what your game uses:
@@ -58,6 +74,7 @@ p.isDown;
 p.justDown;           // pressed this frame
 p.justUp;             // released this frame
 p.downTime;           // performance.now() at press
+p.button;             // 0 left, 1 middle, 2 right (last pointerdown)
 this.input.wheelDelta;
 this.input.pointers;  // Map<pointerId, {x, y, isDown}>
 ```
@@ -92,6 +109,28 @@ this.input.disableDrag(this.card);
 ```
 
 Dragging uses screen coordinates for HUD objects and world coordinates for camera-space objects. It does not use physics constraints; the object is positioned directly.
+
+### Interactive objects
+
+Any game object can emit pointer events without a `Button` wrapper:
+
+```js
+const card = this.add.rect(200, 160, 120, 160, '#313244', 10)
+  .setScrollFactor(0)
+  .setInteractive({
+    onClick: (object, pointer) => this.playCard(object),
+    onHover: (object) => object.setScale(1.05),
+    onOut: (object) => object.setScale(1),
+    onDown: (object) => object.setAlpha(0.85),
+    onUp: (object) => object.setAlpha(1),
+    hitArea: (x, y) => x >= 0 && y >= 0 && x <= 120 && y <= 160   // local px
+  });
+
+card.isHovered;          // kept in sync by the input manager
+card.disableInteractive();
+```
+
+Events: `pointerover`, `pointerout`, `pointerdown`, `pointerup`, `click`, emitted on the object with `(object, pointer)`. Hit testing uses the object's own box unless `hitArea` is supplied (`offsetX`/`offsetY` shift the box). `destroy()` unregisters automatically. Objects inside a `Container` are tested with their local coordinates, so give them an explicit `hitArea` or keep them at the container origin.
 
 ## Gamepad
 
@@ -137,6 +176,8 @@ player.enablePhysics({
 | `collideWorldBounds` | `false` | Clamp against `physics.bounds` |
 | `isSensor` | `false` | Reports overlaps, never separates or blocks |
 | `isCircle` | `false` | Stored flag only; **collision is still AABB** |
+| `collisionGroup` | `null` | Layer name used by masks and the collision matrix |
+| `collidesWith` | `null` | Array, `Set` or `'*'` of groups this body may hit |
 | `enabled` | `true` | Disable physics temporarily |
 
 ### Body API
@@ -155,6 +196,11 @@ body.setCollideWorldBounds(true);
 body.setSensor(false);
 body.setEnabled(false);
 body.setSize(28, 46).setOffset(2, 2);
+
+body.setCollisionGroup('player');
+body.setCollidesWith(['enemy']);      // array, Set or '*'
+body.setVelocityFromAngle(-90, 300);  // degrees, speed
+body.scene;                           // owning scene; follows object.addTo()
 
 body.speed;                   // velocity length
 body.centerX, body.centerY;
@@ -177,6 +223,22 @@ this.physics.timeScale = 0.5;
 this.physics.enabled = false;
 this.physics.debug = true;
 ```
+
+Collision layers and steering:
+
+```js
+this.physics.setCollisionMatrix({
+  player: ['enemy', 'wall'],
+  enemy: ['player', 'wall'],
+  bullet: ['enemy'],
+  wall: '*'
+});
+
+this.physics.moveTo(this.enemy, this.player.x, this.player.y, 180);
+this.enemy.body.setVelocityFromAngle(45, 240);
+```
+
+`setCollisionMatrix(null)` clears the mask. Bodies without a group count as `'default'`; a body with `collidesWith` ignores groups that are not listed. When a scene is paused or sleeping, `physics.step()` skips its bodies automatically.
 
 Properties: `gravity` (Vec2), `bounds`, `bodies`, `colliders`, `fixedStep`, `maxSubSteps`, `enabled`, `timeScale`, `stats { steps, pairs, time }`. Events: `collision`, `world-bounds`.
 
