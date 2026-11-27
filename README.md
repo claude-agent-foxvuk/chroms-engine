@@ -154,6 +154,14 @@ python -m http.server 8080
 # or: npx serve .
 ```
 
+## Releases, versions and tags
+
+- The version lives in `package.json`, `src/00-core.js` (`VERSION`), the generated banner of `chroms.js`, the README and docs headers, `docs/api.json`, `docs/llms.txt` and both demo pages. Bump all of them in the same commit, then run `node build.js`.
+- A release is one commit that bumps the version, fills in `CHANGELOG.md` and ships the rebuilt bundle. That commit gets a single annotated tag `vMAJOR.MINOR.PATCH`.
+- Only releases are tagged. A commit that does not change the version — a docs refresh, or a fix that lands after a release was already tagged — gets no tag of its own: it is inside the history of the next release tag, so `git log v1.1.3` and release diffs already contain it. Avoid version-like names such as `v1.2.1+docs.1`, which readers and tooling take for a release that never existed.
+- Use annotated tags (`git tag -a v1.2.2 -m "Chroms 1.2.2: ..."`), not lightweight ones, so `git describe` and GitHub Releases have a message and a tagger date.
+- Checklist: bump the version everywhere → `node build.js` → `node --check chroms.js` → `node test/smoke.js` → update `CHANGELOG.md` and the README's "What changed" section → commit → tag → `git push origin main --tags`.
+
 ## Design notes
 
 - Canvas 2D, one file, no runtime dependencies, no build step required at runtime.

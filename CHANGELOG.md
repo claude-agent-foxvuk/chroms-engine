@@ -32,6 +32,7 @@ A bug-fix release that closes the remaining known issues from the 1.2 review. Th
 
 - Version bumped to 1.2.2 across the README, docs (en/ru), API manifest, `llms.txt`, demo pages and bundle header.
 - Documented input gating, `blockInput`, the parent-aware hit tests, `onStop` and the scene-start queue.
+- Documented the versioning and tag policy in the README: annotated tags only on release commits, and no version-like tag names for non-release commits.
 
 ## [1.2.1] — 2026-11-27
 
@@ -106,7 +107,7 @@ A feature release: layered scenes, collision layers, UI widgets and richer input
 ### Known limitations
 
 - All active scenes share one physics world and one pointer; `input.pointer.worldX/Y` belongs to the last updated scene, so HUD scenes should use `setScrollFactor(0)`.
-- Scenes still load one at a time; launching a scene while another one is mid-load is not supported.
+- Scenes load one at a time. A start requested while another scene was mid-load was not supported in 1.2.1; **resolved in 1.2.2**, where such starts are queued (`scene-queued`) and drained when the loader finishes.
 
 ## [1.1.3] — 2026-11-26
 
