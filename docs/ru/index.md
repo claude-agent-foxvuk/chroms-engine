@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.2 — документация
+# Chroms Engine v1.2.3 — документация
 
 Chroms — 2D-движок для браузера без зависимостей. Рисует через Canvas 2D, поставляется одним файлом `chroms.js`, а игровая логика живёт в подклассах `Chroms.Scene`.
 
@@ -121,6 +121,8 @@ English (primary): [`../en/index.md`](../en/index.md).
 
 **Новое в 1.2.0** — несколько активных сцен (`scene.launch`, `bringToTop`, `isActive`, `game.getActiveScenes`), слои и маски коллизий (`setCollisionGroup`, `setCollidesWith`, `setCollisionMatrix`), UI-виджеты (`add.slider`, `add.progressBar`, `add.toggle`), `add.polygon`, `sprite.setTint`, `object.setInteractive` с событиями указателя, комбинации клавиш, `repeatDelay` и цветовые твины, `storage.export/import`, `musicPause/musicResume`, объектные слои тайлмапов, `physics.moveTo`.
 
+**Новое в 1.2.3** — манифест проекта (`chroms.config.json`, `Chroms.loadConfig`, `Chroms.validateConfig`, `game.project`), хелперы диапазонов версий (`Chroms.satisfies`, `Chroms.compareVersions`, `Chroms.isCompatible`) и исправления ниже.
+
 **Исправления в 1.2.2** — ввод учитывает статус сцены и `scene.blockInput`, хит-тесты и перетаскивание следуют трансформациям `Container`, `wake()` возвращает приостановленную сцену, отменённые фейды и паны очищают ссылки, `Tween.stop()` вызывает `onStop`, запуск сцены во время загрузки ставится в очередь, а оверлей ошибки сбрасывает трансформацию холста.
 
 **Исправления в 1.2.1** — сцена после сна снова рендерится после перезапуска, `camera.panTo()` не перебивается активным `follow()`, флаг паузы музыки не остаётся на остановленном треке, `body.scene` следует за `object.addTo()`, остановленные и завершённые анимации покидают реестр анимаций.
@@ -141,4 +143,46 @@ English (primary): [`../en/index.md`](../en/index.md).
 - Все активные сцены делят один физический мир и один указатель; `input.pointer.worldX/worldY` относится к последней обновлённой сцене кадра.
 - Указатель видят только запущенные сцены. `game.pause()` отключает ввод виджетов и `setInteractive`, а `scene.setBlockInput(true)` блокирует все сцены под ней.
 
-Версия: **1.2.2** (`Chroms.version`, `Chroms.VERSION`).
+## Метаданные проекта
+
+Проект описывает себя в `chroms.config.json` рядом с входной страницей — та же идея, что `package.json` или `Cargo.toml`, но для браузерной игры, которая подключается одним скриптом:
+
+```json
+{
+  "configVersion": 1,
+  "name": "my-game",
+  "version": "0.1.0",
+  "engine": "^1.2.3",
+  "description": "Небольшой арена-шутер",
+  "author": "Jane Doe <jane@example.com>",
+  "license": "MIT",
+  "homepage": "https://example.com/my-game",
+  "entry": "index.html",
+  "keywords": ["arena", "shooter"]
+}
+```
+
+`engine` — версия Chroms, под которую сделан проект. Принимает точную версию (`1.2.3`) или диапазон (`^1.2`, `~1.2.3`, `>=1.2.0`, `1.x`, `*`). Остальное — обычные метаданные пакета; обязательны только `name` и `engine`.
+
+```javascript
+// Загрузить и проверить манифест, затем передать его игре.
+Chroms.loadConfig('chroms.config.json').then((project) => {
+  const game = new Chroms.Game({
+    width: 800,
+    height: 600,
+    project,            // доступен как game.project и в game.describe()
+    scene: [MainScene]
+  });
+  console.log(game.project.name, game.project.engine);
+});
+
+// Или проверить уже разобранный объект (loader.json / импорт сборщиком).
+const result = Chroms.validateConfig({ name: 'my-game', engine: '^1.2.3' });
+result.ok;         // true
+result.errors;     // []
+result.warnings;   // [] или ['project targets Chroms ^2.0.0 but this build is 1.2.3; …']
+```
+
+Несовпадение версии движка игру не блокирует: `loadConfig` предупреждает, срабатывает `game.events.emit('project-config')`, а ошибки схемы лежат в `game.projectErrors`. Для собственных проверок есть `Chroms.satisfies('1.2.3', '^1.2')`, `Chroms.compareVersions('1.2.0', '1.2.3')` и `Chroms.isCompatible('^1.2.3')`.
+
+Версия: **1.2.3** (`Chroms.version`, `Chroms.VERSION`).

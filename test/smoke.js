@@ -163,7 +163,7 @@ global.localStorage = (() => {
 })();
 
 const Chroms = require(path.join(__dirname, '..', 'chroms.js'));
-assert.strictEqual(Chroms.version, '1.2.2');
+assert.strictEqual(Chroms.version, '1.2.3');
 assert.ok(Chroms.describe().systems.physics.includes('AABB'));
 
 const parent = createElement('div');
@@ -1122,6 +1122,149 @@ assert.strictEqual(sceneRef.physics._cacheStore, cacheStore, 'the physics cache 
 // Sprite frame lookups are cached until the texture or frame changes.
 const cachedFrame = sceneRef.player._resolveFrame();
 assert.strictEqual(sceneRef.player._resolveFrame(), cachedFrame, 'frame data is cached per texture/frame');
+
+// --- 1.2.3 regressions ---
+// Version helpers compare numerically and understand ranges.
+assert.strictEqual(Chroms.compareVersions('1.2.3', '1.2.3'), 0);
+assert.strictEqual(Chroms.compareVersions('1.2.3', '1.2.0'), 1);
+assert.strictEqual(Chroms.compareVersions('1.10.0', '1.9.9'), 1, 'versions compare as numbers');
+assert.strictEqual(Chroms.compareVersions('nope', '1.0.0'), null);
+assert.ok(Chroms.satisfies('1.2.3', '^1.2.0'));
+assert.ok(!Chroms.satisfies('2.0.0', '^1.2.3'));
+assert.ok(Chroms.satisfies('1.2.9', '~1.2.3'));
+assert.ok(!Chroms.satisfies('1.3.0', '~1.2.3'));
+assert.ok(Chroms.satisfies('1.9.0', '1.x'));
+assert.ok(Chroms.satisfies('1.2.3', '>=1.2.0, <2.0.0'));
+assert.ok(Chroms.isCompatible('^1.0.0'));
+
+// Manifest validation and normalization.
+const goodConfig = Chroms.validateConfig({
+  name: 'my-game',
+  version: '0.1.0',
+  engine: '^1.2.0',
+  author: { name: 'Jane', email: 'jane@example.com' }
+});
+assert.ok(goodConfig.ok, 'a complete manifest validates');
+assert.strictEqual(goodConfig.config.author, 'Jane <jane@example.com>');
+assert.deepStrictEqual(goodConfig.warnings, []);
+const emptyConfig = Chroms.validateConfig({ version: 'x' });
+assert.ok(!emptyConfig.ok, 'name and engine are required');
+assert.ok(emptyConfig.errors.length >= 2);
+const badEngine = Chroms.validateConfig({ name: 'x', engine: 'latest' });
+assert.ok(!badEngine.ok, 'a malformed engine range is rejected');
+const futureEngine = Chroms.validateConfig({ name: 'x', engine: '^9.0.0' });
+assert.ok(futureEngine.ok, 'an engine mismatch only warns');
+assert.strictEqual(futureEngine.warnings.length, 1);
+
+// A game exposes the manifest and includes it in describe().
+const projectGame = new Chroms.Game({
+  width: 100,
+  height: 80,
+  parent,
+  scene: [SleeperScene],
+  autoStart: false,
+  scaleMode: 'none',
+  project: { name: 'demo', version: '0.1.0', engine: '^1.2.0' }
+});
+assert.strictEqual(projectGame.project.name, 'demo');
+assert.strictEqual(projectGame.getProjectConfig().engine, '^1.2.0');
+assert.strictEqual(projectGame.describe().project.name, 'demo');
+assert.strictEqual(Chroms.describe().config.file, 'chroms.config.json');
+projectGame.destroy();
+
+// Separation against an immovable body moves along one axis only.
+const floor = sceneRef.add.rect(100, 100, 100, 20, '#ffffff');
+floor.enablePhysics({ immovable: true });
+const walker = sceneRef.add.rect(140, 85, 20, 20, '#ffffff');
+walker.enablePhysics();
+sceneRef.physics.collideNow(walker, floor);
+assert.strictEqual(Math.round(walker.x), 140, 'vertical separation does not move x');
+assert.strictEqual(Math.round(walker.y), 80, 'vertical separation moves only y');
+const separationWall = sceneRef.add.rect(200, 200, 20, 100, '#ffffff');
+separationWall.enablePhysics({ immovable: true });
+const separationRunner = sceneRef.add.rect(185, 220, 20, 20, '#ffffff');
+separationRunner.enablePhysics();
+sceneRef.physics.collideNow(separationRunner, separationWall);
+assert.strictEqual(Math.round(separationRunner.x), 180, 'horizontal separation moves only x');
+assert.strictEqual(Math.round(separationRunner.y), 220, 'horizontal separation does not move y');
+
+// Audio volume, channel selection and fade cleanup.
+const stubAudio = () => ({
+  volume: 1,
+  currentTime: 0,
+  playbackRate: 1,
+  loop: false,
+  addEventListener() {},
+  play() { return Promise.resolve(); },
+  pause() {}
+});
+game.load.audios.blip = { cloneNode: () => stubAudio() };
+game.sound.setSfxVolume(1);
+const blip = game.sound.play('blip', { volume: 0.5 });
+assert.strictEqual(blip.audio.volume, 0.5);
+game.sound.setSfxVolume(0.5);
+assert.strictEqual(blip.audio.volume, 0.25, 'setSfxVolume updates playing sounds');
+game.sound._fadeTo(blip, 0, 1000);
+assert.strictEqual(game.sound._fades.length, 1);
+blip.stop();
+assert.strictEqual(game.sound._fades.length, 0, 'stopping a sound drops its fade');
+const looped = game.sound.play('blip', { loop: true, channel: 'sfx' });
+assert.strictEqual(looped.channel, 'sfx', 'an explicit channel wins over loop');
+looped.stop();
+game.sound.setSfxVolume(1);
+
+// A locked drag axis keeps the position from the start of the drag.
+const draggable = sceneRef.add.rect(10, 50, 40, 40, '#ffffff');
+game.input.enableDrag(draggable, { dragX: false });
+draggable.x = 90;
+const dragPointer = game.input.pointer;
+dragPointer.worldX = 100;
+dragPointer.worldY = 60;
+game.input._beginDrag();
+assert.ok(game.input._dragging, 'the drag starts on the object');
+dragPointer.worldX = 160;
+game.input._dragMove();
+assert.strictEqual(draggable.x, 90, 'a locked axis holds the drag-start position');
+assert.strictEqual(draggable.y, 50);
+game.input._endDrag();
+game.input.disableDrag(draggable);
+
+// once() removes only its own listener.
+const bus = new Chroms.EventEmitter();
+let busCalls = 0;
+const busHandler = () => { busCalls += 1; };
+bus.once('tick', busHandler);
+bus.on('tick', busHandler);
+bus.emit('tick');
+bus.emit('tick');
+assert.strictEqual(busCalls, 3, 'a persistent listener survives once()');
+
+// sendToBack() moves game.currentScene with the stack.
+const stackGame = new Chroms.Game({
+  width: 100,
+  height: 80,
+  parent,
+  scene: [SleeperScene, SecondScene],
+  autoStart: false,
+  scaleMode: 'none'
+});
+stackGame.startScene('sleeper');
+stackGame.launchScene('second');
+assert.strictEqual(stackGame.currentScene.key, 'second');
+stackGame.sendToBack('second');
+assert.strictEqual(stackGame.currentScene.key, 'sleeper', 'currentScene follows the reordered stack');
+stackGame.destroy();
+
+// The loader resolves sprite sheets, and a killed tween is not "complete".
+game.load.spritesheets.cardSheet = { image: {}, frames: [] };
+assert.ok(game.load.get('cardSheet'), 'loader.get resolves sprite sheets');
+let managerCompletes = 0;
+const onManagerComplete = () => { managerCompletes += 1; };
+sceneRef.tweens.events.on('complete', onManagerComplete);
+const killedTween = sceneRef.tweens.add({ targets: { v: 0 }, v: 1, duration: 1000 });
+killedTween.stop();
+assert.strictEqual(managerCompletes, 0, 'a stopped tween is not reported as complete');
+sceneRef.tweens.events.off('complete', onManagerComplete);
 
 game.destroy();
 assert.ok(!game.running);

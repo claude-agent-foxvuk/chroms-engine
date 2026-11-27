@@ -634,7 +634,10 @@
         return { axis, amount, direction };
       }
       if (a.immovable) {
-        b._moveBy(-direction * amount, axis === 'y' ? -direction * amount : 0);
+        b._moveBy(
+          axis === 'x' ? -direction * amount : 0,
+          axis === 'y' ? -direction * amount : 0
+        );
         if (axis === 'y' && b.velocity.y * direction > 0) {
           b.velocity.y = -b.velocity.y * b.bounce;
         }
@@ -642,7 +645,10 @@
           b.velocity.x = -b.velocity.x * b.bounce;
         }
       } else if (b.immovable) {
-        a._moveBy(direction * amount, axis === 'y' ? direction * amount : 0);
+        a._moveBy(
+          axis === 'x' ? direction * amount : 0,
+          axis === 'y' ? direction * amount : 0
+        );
         if (axis === 'y' && a.velocity.y * direction < 0) {
           a.velocity.y = -a.velocity.y * a.bounce;
         }

@@ -52,6 +52,8 @@
       this.tweens = new TweenManager(this);
       this.time = new TimerManager(this);
       this.storage = new SaveManager(cfg.storagePrefix || 'chroms');
+      this.project = null;
+      this.projectErrors = [];
       this.seed = cfg.seed;
       this.random = new Random(cfg.seed);
       this.plugins = {};
@@ -120,6 +122,8 @@
       this._registerLifecycle();
       this.resize();
 
+      if (cfg.project) this.setProjectConfig(cfg.project);
+
       (cfg.plugins || []).forEach((plugin) => this.use(plugin));
 
       const scenes = cfg.scenes || cfg.scene;
@@ -183,7 +187,33 @@
       if (scene) this._stopSceneInternal(scene);
       delete this.scenes[key];
       this.sceneOrder = this.sceneOrder.filter((item) => item !== key);
+      // A queued start for a removed scene would otherwise resurrect it.
+      this._sceneQueue = this._sceneQueue.filter((entry) => entry.scene.key !== key);
       return this;
+    }
+
+    /**
+     * Attach project metadata (a parsed `chroms.config.json`). Invalid fields
+     * are reported in `game.projectErrors`; an engine-version mismatch only
+     * warns. Emits `project-config` (or `project-warning`).
+     */
+    setProjectConfig(data) {
+      const result = validateConfig(data);
+      this.project = result.config;
+      this.projectErrors = result.errors.slice();
+      if (result.errors.length) {
+        console.warn('[Chroms] Invalid project config: ' + result.errors.join('; '));
+      }
+      if (result.warnings.length) {
+        console.warn('[Chroms] ' + result.warnings.join('; '));
+        this.events.emit('project-warning', result.warnings, this.project);
+      }
+      this.events.emit('project-config', this.project);
+      return this.project;
+    }
+    /** The normalized project metadata, or null when none was provided. */
+    getProjectConfig() {
+      return this.project;
     }
 
     /** True while the scene (or the current one) is in the active stack. */
@@ -216,6 +246,8 @@
       if (!target || this.sceneStack.indexOf(target) === -1) return this;
       this.sceneStack = this.sceneStack.filter((item) => item !== target);
       this.sceneStack.unshift(target);
+      // Sending the top scene to the back makes the next scene current.
+      this.currentScene = this._topScene();
       this.events.emit('scene-sent-to-back', this.scenes[target] || null);
       return this;
     }
@@ -796,7 +828,7 @@
 
     /** Machine-readable engine summary (same payload as `Chroms.describe()`). */
     describe() {
-      return buildManifest();
+      return buildManifest(this.project);
     }
 
     destroy() {
@@ -816,10 +848,17 @@
   }
 
   /** Machine-readable summary for humans, tools and LLM agents. */
-  function buildManifest() {
+  function buildManifest(project) {
     return {
       name: 'Chroms',
       version: VERSION,
+      project: project || null,
+      config: {
+        file: 'chroms.config.json',
+        fields: ['name', 'version', 'engine', 'description', 'author', 'license', 'homepage', 'entry', 'keywords'],
+        api: 'Chroms.loadConfig(url), Chroms.validateConfig(data), new Chroms.Game({ project }) -> game.project',
+        engineRange: 'engine accepts 1.2.3, ^1.2, ~1.2.3, >=1.2.0, 1.x or *'
+      },
       runtime: 'browser',
       renderer: 'Canvas 2D',
       inspiration:
@@ -954,7 +993,7 @@
   });
 
   Chroms.describe = function describe() {
-    return buildManifest();
+    return buildManifest(null);
   };
 
   global.Chroms = Chroms;

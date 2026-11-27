@@ -1,6 +1,6 @@
 {
   "name": "Chroms",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "runtime": "browser",
   "inspiration": "API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent Canvas 2D implementation",
   "global": "window.Chroms",
@@ -30,6 +30,24 @@
     "HUD objects use setScrollFactor(0)",
     "assets must be queued in preload"
   ],
+  "projectConfig": {
+    "file": "chroms.config.json",
+    "required": ["name", "engine"],
+    "fields": ["configVersion", "name", "version", "engine", "description", "author", "license", "homepage", "entry", "keywords"],
+    "engineRange": "1.2.3 | ^1.2 | ~1.2.3 | >=1.2.0 | 1.x | *",
+    "api": {
+      "load": "Chroms.loadConfig(url?) -> Promise<normalized config>",
+      "validate": "Chroms.validateConfig(data) -> { ok, errors, warnings, config }",
+      "game": "new Chroms.Game({ project }) -> game.project, game.projectErrors, game.getProjectConfig()",
+      "events": ["project-config", "project-warning"],
+      "describe": "game.describe().project"
+    },
+    "versions": {
+      "compare": "Chroms.compareVersions(a, b) -> -1 | 0 | 1 | null",
+      "satisfies": "Chroms.satisfies(version, range) -> boolean",
+      "compatible": "Chroms.isCompatible(range) -> boolean"
+    }
+  },
   "gameConfig": {
     "width": 800,
     "height": 600,

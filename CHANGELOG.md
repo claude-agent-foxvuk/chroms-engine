@@ -2,6 +2,45 @@
 
 All notable changes to Chroms. The project follows semantic versioning.
 
+## [1.2.3] — 2026-11-27
+
+A small feature release: project metadata, version helpers and a batch of runtime fixes.
+
+### Added — project metadata
+
+- `chroms.config.json`: a project manifest with `name`, `version`, `engine`, `description`, `author` (string or `{ name, email, url }`), `license`, `homepage`, `entry`, `keywords` and `configVersion`. `name` and `engine` are required; the rest is optional.
+- `engine` accepts an exact version or a range: `1.2.3`, `^1.2`, `~1.2.3`, `>=1.2.0`, `1.x`, `*`, `||` and comma-separated constraints.
+- `Chroms.loadConfig(url)` fetches `chroms.config.json`, validates it and resolves with the normalized manifest; `Chroms.validateConfig(data)` returns `{ ok, errors, warnings, config }` for an already parsed object.
+- `new Chroms.Game({ project })` stores it as `game.project`, emits `project-config`, exposes `game.getProjectConfig()` and `game.projectErrors`, and includes it in `game.describe().project`. A manifest built for another engine version only warns (`project-warning`).
+- `Chroms.compareVersions(a, b)`, `Chroms.satisfies(version, range)`, `Chroms.isCompatible(range)` and `Chroms.CONFIG_SCHEMA_VERSION`.
+- **Every release in this repository now contains the manifest.** Older tagged commits were rewritten with the same messages, authors and dates so each one carries a `chroms.config.json` for its own version, and the tags were moved to the rewritten commits.
+
+### Fixed
+
+- Physics separation moved immovable-body collisions along both axes: a vertical hit also shifted the body horizontally by the overlap and a horizontal hit shifted it vertically. Each axis now moves only along the resolved axis.
+- `sound.setSfxVolume()` changed the stored value but not the volume of sounds already playing; it now re-applies channel volumes immediately.
+- A fade started by `stopMusic(fade)` kept a reference after the handle stopped and went on writing its volume; `stopAll()` also kept pending fades and the paused-music flag. Fades are dropped with their handle and `stopAll()` clears the paused state.
+- `sound.play()` chose the music channel for any looping sound even when `channel: 'sfx'` was passed; an explicit channel now wins.
+- Window blur left held keys, the pointer-down flag, secondary pointers and an active drag alive. Blur now releases all of them.
+- `enableDrag({ dragX: false })` snapped the locked axis back to the position the object had when dragging was enabled, not to its position when the drag began.
+- `game.sendToBack()` reordered the stack without updating `game.currentScene`, which stayed on the scene that had just moved to the bottom.
+- `game.removeScene()` left a queued scene start behind, so the removed scene could come back when the loader finished.
+- `EventEmitter.once()` removed listeners with `off()`, which also deleted a persistent `on()` listener registered with the same function and context. It now removes only its own entry.
+- Loading a texture atlas whose image failed registered a broken atlas as loaded; the failure is now reported through `loader.errors` and `load-complete`.
+- `loader.get(key)` returned `null` for sprite sheets and atlases even though `loader.has(key)` was true.
+- `camera.setSize()` changed the viewport without re-applying camera bounds, leaving the camera outside its limits after a resize.
+- `TweenManager` emitted `complete` for tweens that were stopped or dropped with their target. It now emits `remove` for every removal and `complete` only for a tween that finished.
+
+### Tests
+
+- Regressions for vertical/horizontal separation against immovable bodies, SFX volume changes, fade cleanup, drag axis locks, `sendToBack()`, `EventEmitter.once()`, manifest validation and engine-range matching.
+
+### Docs
+
+- Version bumped to 1.2.3 across the README, docs (en/ru), API manifest, `llms.txt`, demo pages, bundle header and `package.json`.
+- Documented the manifest, `Chroms.loadConfig` / `validateConfig`, `game.project`, the engine-version warning and the version range helpers.
+- Documented that every tagged release contains a `chroms.config.json` for its own version.
+
 ## [1.2.2] — 2026-11-27
 
 A bug-fix release that closes the remaining known issues from the 1.2 review. The API only grows: `scene.blockInput`, `scene.setBlockInput()`, `object.toLocal()`, `object.inScreenSpace()` and the tween `onStop` hook.

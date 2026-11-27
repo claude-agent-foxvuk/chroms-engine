@@ -10,7 +10,10 @@ The minimum is two files:
 project/
   chroms.js
   index.html
+  chroms.config.json   (recommended: name, version, engine, author)
 ```
+
+`chroms.config.json` declares the engine version the project was built against and ordinary package metadata. It is optional at runtime; see [Project metadata](index.md#project-metadata).
 
 ```html
 <!DOCTYPE html>

@@ -9,7 +9,10 @@ project/
   chroms.js
   index.html
   game.js
+  chroms.config.json   (рекомендуется: name, version, engine, author)
 ```
+
+`chroms.config.json` объявляет версию движка, под которую сделан проект, и обычные метаданные пакета. Во время работы он необязателен; см. [Метаданные проекта](index.md#метаданные-проекта).
 
 ```html
 <!DOCTYPE html>

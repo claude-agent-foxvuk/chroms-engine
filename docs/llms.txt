@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.2 — LLM quick reference
+# Chroms Engine v1.2.3 — LLM quick reference
 
 Chroms is a dependency-free Canvas 2D game engine for browsers. Single file: chroms.js.
 API inspired by Phaser 3 (scenes, add factory, groups, tweens, timers, camera); independent implementation.
@@ -56,6 +56,14 @@ new Chroms.Game({ width: 800, height: 600, backgroundColor: '#181825', scene: [M
 - justDown/justUp are only trustworthy inside update()/object update().
 - Assets must be queued in preload(). load.json and load.text need HTTP (fetch).
 - Default scene list starts the first scene automatically.
+
+## Project config
+
+chroms.config.json describes the project: name, version, engine, description, author, license, homepage, entry, keywords.
+Only name and engine are required. engine is the Chroms version the project targets: 1.2.3, ^1.2, ~1.2.3, >=1.2.0, 1.x or *.
+Chroms.loadConfig('chroms.config.json') -> Promise<normalized config>; Chroms.validateConfig(obj) -> { ok, errors, warnings, config }.
+new Chroms.Game({ project }) -> game.project, game.projectErrors, game.describe().project. An engine mismatch warns; it does not throw.
+Chroms.satisfies('1.2.3', '^1.2'), Chroms.compareVersions(a, b), Chroms.isCompatible('^1.2.3').
 
 ## Lifecycle
 

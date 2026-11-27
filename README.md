@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.2
+# Chroms Engine v1.2.3
 
 A small, dependency-free 2D game engine for the browser. It renders with Canvas 2D, ships as one file, and is designed for two audiences: people who want a readable API, and AI agents that need a predictable, documented surface.
 
@@ -52,6 +52,18 @@ Chroms started in v1.0 as a four-class proof of concept. The current release cov
 - **Tilemaps** — JSON maps, layers, tinted color tiles or sprite-sheet tiles, per-layer collision, dynamic tile edits.
 - **Persistence & math** — localStorage save manager, seeded RNG, vectors, angle/distance helpers, 30+ easings.
 - **AI support** — `Chroms.describe()` runtime manifest plus [`docs/llms.txt`](docs/llms.txt) and [`docs/api.json`](docs/api.json).
+
+## What changed in 1.2.3
+
+A small feature release: project metadata, version helpers and a batch of runtime fixes.
+
+- **Project metadata.** `chroms.config.json` describes a project the way `package.json` does: name, version, author, license, homepage, entry, keywords and — the important one — `engine`, the Chroms version the project targets. `Chroms.loadConfig(url)` fetches and validates it, `Chroms.validateConfig(data)` checks an object, `new Chroms.Game({ project })` exposes it as `game.project`, and `game.describe()` includes it. An engine mismatch warns instead of breaking the game. Every tagged release in this repository, including the older ones, now ships the manifest for its own version.
+- **Version helpers.** `Chroms.compareVersions(a, b)`, `Chroms.satisfies(version, range)` (`^`, `~`, `>=`, `<=`, `>`, `<`, `1.x`, `*`) and `Chroms.isCompatible(range)`.
+- **Physics separation.** A vertical collision with an immovable body no longer also pushes the moving body sideways, and a horizontal one no longer pushes it vertically.
+- **Audio.** `sound.setSfxVolume()` applies to sounds that are already playing, a fade envelope is dropped when its handle stops, `stopAll()` resets paused-music state and pending fades, and an explicit `channel` wins over `loop` in `sound.play()`.
+- **Input.** Losing window focus releases held keys, pointers and drags, and `enableDrag({ dragX: false })` keeps the axis at the position where the drag started rather than where the object was when the drag was enabled.
+- **Scenes and events.** `sendToBack()` updates `game.currentScene`, `removeScene()` drops queued starts for that scene, `camera.setSize()` re-applies bounds, a stopped tween no longer emits the tween manager's `complete` event, and `EventEmitter.once()` removes only its own entry, so an `on()` listener with the same function survives.
+- **Loader.** `load.get(key)` resolves sprite sheets and atlases, and a failed atlas image is reported as an error instead of being registered.
 
 ## What changed in 1.2.2
 
@@ -125,10 +137,13 @@ English (primary):
 
 Русская документация: [docs/ru/index.md](docs/ru/index.md).
 
+Project metadata lives in [`chroms.config.json`](chroms.config.json) and is described under [Project metadata](docs/en/index.md#project-metadata) (и по-русски: [Метаданные проекта](docs/ru/index.md#метаданные-проекта)).
+
 ## Project layout
 
 ```
 chroms.js          built single-file engine (do not edit by hand)
+chroms.config.json project manifest (name, version, engine, author, license)
 src/*.js           source modules, concatenated in filename order
 build.js           node build.js -> chroms.js
 index.html         arena demo (repository entry point / landing page)
@@ -156,10 +171,10 @@ python -m http.server 8080
 
 ## Releases, versions and tags
 
-- The version lives in `package.json`, `src/00-core.js` (`VERSION`), the generated banner of `chroms.js`, the README and docs headers, `docs/api.json`, `docs/llms.txt` and both demo pages. Bump all of them in the same commit, then run `node build.js`.
+- The version lives in `package.json`, `chroms.config.json` (`version` and the `engine` range), `src/00-core.js` (`VERSION`), the generated banner of `chroms.js`, the README and docs headers, `docs/api.json`, `docs/llms.txt` and both demo pages. Bump all of them in the same commit, then run `node build.js` (or run the manifest generator first so `engine` matches).
 - A release is one commit that bumps the version, fills in `CHANGELOG.md` and ships the rebuilt bundle. That commit gets a single annotated tag `vMAJOR.MINOR.PATCH`.
 - Only releases are tagged. A commit that does not change the version — a docs refresh, or a fix that lands after a release was already tagged — gets no tag of its own: it is inside the history of the next release tag, so `git log v1.1.3` and release diffs already contain it. Avoid version-like names such as `v1.2.1+docs.1`, which readers and tooling take for a release that never existed.
-- Use annotated tags (`git tag -a v1.2.2 -m "Chroms 1.2.2: ..."`), not lightweight ones, so `git describe` and GitHub Releases have a message and a tagger date.
+- Use annotated tags (`git tag -a v1.2.3 -m "Chroms 1.2.3: ..."`), not lightweight ones, so `git describe` and GitHub Releases have a message and a tagger date.
 - Checklist: bump the version everywhere → `node build.js` → `node --check chroms.js` → `node test/smoke.js` → update `CHANGELOG.md` and the README's "What changed" section → commit → tag → `git push origin main --tags`.
 
 ## Design notes

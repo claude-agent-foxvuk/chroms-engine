@@ -49,6 +49,8 @@
     setSize(width, height) {
       this.width = width;
       this.height = height;
+      // A smaller view can make the previously clamped position invalid.
+      this._clamp();
       return this;
     }
     resize(width, height) {

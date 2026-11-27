@@ -77,6 +77,8 @@
         this.audios[key] ||
         this.json[key] ||
         this.texts[key] ||
+        this.spritesheets[key] ||
+        this.atlases[key] ||
         null
       );
     }
@@ -222,10 +224,13 @@
           const img = new Image();
           let data = null;
           let waiting = 2;
+          let failed = false;
           const finish = () => {
             waiting -= 1;
             if (waiting > 0) return;
-            if (!img || !data) {
+            // A decoded Image object exists even when loading failed; without
+            // this flag a broken texture was registered as a working atlas.
+            if (failed || !img || !data) {
               fail(new Error('Atlas data or image failed'));
               return;
             }
@@ -258,7 +263,10 @@
             tick(item);
           };
           img.onload = finish;
-          img.onerror = () => finish();
+          img.onerror = () => {
+            failed = true;
+            finish();
+          };
           img.src = item.url;
           if (typeof item.dataOrUrl === 'string') {
             fetch(item.dataOrUrl)
@@ -268,6 +276,7 @@
                 finish();
               })
               .catch(() => {
+                failed = true;
                 finish();
               });
           } else {
@@ -376,8 +385,16 @@
         this.keys[e.code] = false;
       });
       on(global, 'blur', () => {
+        // A tab switch can swallow the keyup/pointerup events; drop the held
+        // state so keys, drags and justDown cannot stick.
         this.keys = {};
+        this.justPressed = {};
+        this.justReleased = {};
+        this.pointers.clear();
         this.pointer.isDown = false;
+        this.pointer.justDown = false;
+        this.pointer.justUp = false;
+        if (this._dragging) this._endDrag();
       });
 
       on(canvas, 'pointerdown', (e) => {
@@ -652,8 +669,6 @@
      */
     enableDrag(object, options) {
       object._dragOptions = options || {};
-      object._dragOptions.startX = object.x;
-      object._dragOptions.startY = object.y;
       if (this._dragTargets.indexOf(object) === -1) this._dragTargets.push(object);
       return object;
     }
@@ -685,6 +700,10 @@
             screen,
             offsetX: space.x - object.x,
             offsetY: space.y - object.y,
+            // Locked axes must hold the position from drag start, not the
+            // position the object had when enableDrag() was called.
+            startX: object.x,
+            startY: object.y,
             options: opts
           };
           object.isDragged = true;
@@ -705,8 +724,8 @@
       if (object.body) {
         object.body.setVelocity(0, 0);
       }
-      object.x = opts.dragX === false ? drag.options.startX : x;
-      object.y = opts.dragY === false ? drag.options.startY : y;
+      object.x = opts.dragX === false ? drag.startX : x;
+      object.y = opts.dragY === false ? drag.startY : y;
       if (opts.onDrag) opts.onDrag(object, this.pointer);
     }
     _endDrag() {
@@ -795,6 +814,7 @@
     }
     setSfxVolume(volume) {
       this.sfxVolume = MathUtils.clamp01(volume);
+      this._applyVolumes();
       return this;
     }
     setMusicVolume(volume) {
@@ -835,7 +855,8 @@
       }
       const audio = source.cloneNode(true);
       const baseVolume = opts.volume === undefined ? 1 : opts.volume;
-      const channel = opts.loop ? 'music' : opts.channel || 'sfx';
+      // An explicit channel wins; looped sounds default to the music channel.
+      const channel = opts.channel || (opts.loop ? 'music' : 'sfx');
       audio.volume = this.muted ? 0 : baseVolume * (channel === 'music' ? this.musicVolume : this.sfxVolume) * this.masterVolume;
       audio.loop = !!opts.loop;
       audio.playbackRate = opts.rate || 1;
@@ -853,6 +874,9 @@
           } catch (error) {
             /* ignore */
           }
+          // A fade envelope left over from stopMusic() would keep writing the
+          // volume of an audio element that is no longer playing.
+          this.owner._clearFades(this);
           const idx = this.owner.active.indexOf(this);
           if (idx !== -1) this.owner.active.splice(idx, 1);
         },
@@ -937,8 +961,17 @@
     }
     stopAll() {
       this.active.slice().forEach((handle) => handle.stop());
+      this.active = [];
+      this._fades = [];
       this.music = null;
       this.musicKey = null;
+      this._musicPaused = false;
+      return this;
+    }
+
+    _clearFades(handle) {
+      if (!this._fades.length) return this;
+      this._fades = this._fades.filter((fade) => fade.handle !== handle);
       return this;
     }
 

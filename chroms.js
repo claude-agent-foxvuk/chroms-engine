@@ -1,7 +1,7 @@
-/*! Chroms Engine v1.2.2 | built 2026-11-27 | docs: docs/en/index.md / docs/ru/index.md */
+/*! Chroms Engine v1.2.3 | built 2026-11-27 | docs: docs/en/index.md / docs/ru/index.md */
 /* ---- 00-core.js ---- */
 /**
- * Chroms Engine v1.2.2
+ * Chroms Engine v1.2.3
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
  * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
@@ -12,7 +12,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.2.2';
+  const VERSION = '1.2.3';
   let _uid = 0;
 
   function uid(prefix) {
@@ -287,7 +287,12 @@
       const list = this._listeners[event];
       if (!list || list.length === 0) return false;
       for (const entry of list.slice()) {
-        if (entry.once) this.off(event, entry.handler, entry.context);
+        if (entry.once) {
+          // Remove this exact entry: off() would also drop a persistent
+          // listener registered with the same function and context.
+          const index = list.indexOf(entry);
+          if (index !== -1) list.splice(index, 1);
+        }
         entry.handler.apply(entry.context || this, args);
       }
       return true;
@@ -614,6 +619,269 @@
     plugins: {}
   };
 
+/* ---- 05-config.js ---- */
+  /**
+   * Project metadata: `chroms.config.json`.
+   *
+   * A project that uses Chroms can describe itself with a small JSON manifest:
+   * the engine version it was built against, its own name/version, the author
+   * and the usual package metadata. `Chroms.loadConfig(url)` fetches and
+   * validates one; `new Chroms.Game({ project })` attaches an already parsed
+   * one and exposes it as `game.project`.
+   */
+
+  const CONFIG_SCHEMA_VERSION = 1;
+
+  /** Parse '1.2.3' (an optional leading v and pre-release/build suffix are ignored). */
+  function parseVersion(value) {
+    if (typeof value !== 'string') return null;
+    const match = value.trim().match(/^[vV]?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9a-z.-]+)?$/i);
+    if (!match) return null;
+    return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+  }
+
+  /**
+   * Parse a compact version range: '1.2.3', '^1.2', '~1.2.3', '>=1.2.0',
+   * '>1.2', '<=2.0.0', '<2', '1.x' or '*'. Returns null when malformed.
+   */
+  function parseVersionRange(range) {
+    if (typeof range !== 'string') return null;
+    const text = range.trim();
+    if (!text || text === '*' || text === 'x' || text === 'X') return { any: true };
+    const match = text.match(/^(\^|~|>=|<=|>|<|=)?\s*[vV]?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?$/);
+    if (!match) return null;
+    const operator = match[1] || '';
+    const parts = [match[2], match[3], match[4]];
+    if (parts[0] === 'x' || parts[0] === 'X' || parts[0] === '*') return { any: true };
+    const base = {
+      major: Number(parts[0]),
+      minor: parts[1] === undefined || /^[xX*]$/.test(parts[1]) ? null : Number(parts[1]),
+      patch: parts[2] === undefined || /^[xX*]$/.test(parts[2]) ? null : Number(parts[2])
+    };
+    return { operator, base, any: false };
+  }
+
+  function compareNumbers(a, b) {
+    return a === b ? 0 : a < b ? -1 : 1;
+  }
+
+  /**
+   * Compare two versions: -1, 0 or 1. Returns null when either value is not a
+   * version. Pre-release and build suffixes are ignored.
+   */
+  function compareVersions(a, b) {
+    const left = parseVersion(a);
+    const right = parseVersion(b);
+    if (!left || !right) return null;
+    return (
+      compareNumbers(left.major, right.major) ||
+      compareNumbers(left.minor, right.minor) ||
+      compareNumbers(left.patch, right.patch)
+    );
+  }
+
+  function compareToBase(version, base) {
+    const target = {
+      major: base.major,
+      minor: base.minor === null ? 0 : base.minor,
+      patch: base.patch === null ? 0 : base.patch
+    };
+    return (
+      compareNumbers(version.major, target.major) ||
+      compareNumbers(version.minor, target.minor) ||
+      compareNumbers(version.patch, target.patch)
+    );
+  }
+
+  /** True when the whole (possibly comma/|| separated) range is well formed. */
+  function isVersionRange(value) {
+    if (typeof value !== 'string' || !value.trim()) return false;
+    return value
+      .split('||')
+      .every((alternative) =>
+        alternative.split(',').every((part) => parseVersionRange(part) !== null)
+      );
+  }
+
+  /** True when `version` satisfies `range` ('^1.2.3', '~1.2', '>=1.2', '*'…). */
+  function satisfies(version, range) {
+    const target = parseVersion(version);
+    if (!target) return false;
+    if (typeof range !== 'string') return false;
+    if (range.indexOf('||') !== -1) {
+      return range.split('||').some((part) => satisfies(version, part));
+    }
+    if (range.indexOf(',') !== -1) {
+      return range.split(',').every((part) => satisfies(version, part));
+    }
+    const parsed = parseVersionRange(range);
+    if (!parsed) return false;
+    if (parsed.any) return true;
+    const base = parsed.base;
+    const operator = parsed.operator;
+    if (base.minor === null && base.patch === null) {
+      // '^1', '~1', '>=1', '1' — major-only comparisons.
+      const delta = compareNumbers(target.major, base.major);
+      if (operator === '^' || operator === '' || operator === '=') return delta === 0;
+      if (operator === '~') return delta === 0;
+      if (operator === '>=') return delta >= 0;
+      if (operator === '>') return delta > 0;
+      if (operator === '<=') return delta <= 0;
+      return delta < 0;
+    }
+    const delta = compareToBase(target, base);
+    if (operator === '^') {
+      if (base.major > 0) return target.major === base.major && delta >= 0;
+      if (base.minor === null) return target.major === 0 && delta >= 0;
+      if (base.minor > 0) return target.major === 0 && target.minor === base.minor && delta >= 0;
+      if (base.patch === null) return target.major === 0 && target.minor === 0;
+      return target.major === 0 && target.minor === 0 && target.patch === base.patch;
+    }
+    if (operator === '~') {
+      return (
+        target.major === base.major &&
+        (base.minor === null || target.minor === base.minor) &&
+        delta >= 0
+      );
+    }
+    if (operator === '>=') return delta >= 0;
+    if (operator === '>') return delta > 0;
+    if (operator === '<=') return delta <= 0;
+    if (operator === '<') return delta < 0;
+    return delta === 0;
+  }
+
+  /** True when this build satisfies `range`. */
+  function isCompatible(range) {
+    return satisfies(VERSION, range);
+  }
+
+  function normalizeAuthor(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value.trim();
+    if (!isObject(value)) return '';
+    const name = typeof value.name === 'string' ? value.name.trim() : '';
+    const email = typeof value.email === 'string' ? value.email.trim() : '';
+    const url = typeof value.url === 'string' ? value.url.trim() : '';
+    if (name && email) return name + ' <' + email + '>';
+    return name || email || url;
+  }
+
+  function normalizeKeywords(value) {
+    if (value === undefined) return [];
+    const list = Array.isArray(value) ? value : [value];
+    const out = [];
+    list.forEach((entry) => {
+      if (typeof entry !== 'string') return;
+      const word = entry.trim();
+      if (word && out.indexOf(word) === -1) out.push(word);
+    });
+    return out;
+  }
+
+  function normalizeConfigValue(value) {
+    return typeof value === 'string' ? value.trim() : value;
+  }
+
+  /**
+   * Validate a parsed `chroms.config.json`.
+   * Returns `{ ok, errors, warnings, config }`; `config` is always normalized
+   * so a game can expose partial metadata even when something is missing.
+   */
+  function validateConfig(data) {
+    const errors = [];
+    const warnings = [];
+    const source = isObject(data) ? data : {};
+    if (!isObject(data)) errors.push('config must be a JSON object');
+
+    const name = typeof source.name === 'string' ? source.name.trim() : '';
+    if (!name) errors.push('name is required');
+
+    const engine = typeof source.engine === 'string' ? source.engine.trim() : '';
+    if (!engine) {
+      errors.push('engine is required (the Chroms version the project targets, e.g. "^1.2.3")');
+    } else if (!isVersionRange(engine)) {
+      errors.push('engine must be a version or range such as "1.2.3", "^1.2" or ">=1.2.0"');
+    }
+
+    let version = null;
+    if (source.version !== undefined && source.version !== null && source.version !== '') {
+      version = String(source.version).trim();
+      if (!parseVersion(version)) errors.push('version must look like "1.0.0"');
+    }
+
+    const config = {
+      configVersion: CONFIG_SCHEMA_VERSION,
+      name,
+      version,
+      engine,
+      description: typeof source.description === 'string' ? source.description.trim() : '',
+      author: normalizeAuthor(source.author),
+      license: typeof source.license === 'string' ? source.license.trim() : '',
+      homepage: typeof source.homepage === 'string' ? source.homepage.trim() : '',
+      entry: typeof source.entry === 'string' ? source.entry.trim() : '',
+      keywords: normalizeKeywords(source.keywords)
+    };
+
+    if (source.configVersion !== undefined) {
+      const schema = Number(source.configVersion);
+      if (!Number.isFinite(schema) || schema < 1) {
+        errors.push('configVersion must be a positive number');
+      } else if (schema > CONFIG_SCHEMA_VERSION) {
+        warnings.push(
+          'configVersion ' + schema + ' is newer than this engine understands (' + CONFIG_SCHEMA_VERSION + ')'
+        );
+      }
+    }
+
+    if (engine && isVersionRange(engine) && !satisfies(VERSION, engine)) {
+      warnings.push(
+        'project targets Chroms ' + engine + ' but this build is ' + VERSION + '; check the changelog for breaking changes'
+      );
+    }
+
+    return { ok: errors.length === 0, errors, warnings, config };
+  }
+
+  /**
+   * Fetch and validate `chroms.config.json`. Resolves with the normalized
+   * config (warnings are attached as `config.warnings`); rejects when the
+   * manifest is missing or invalid.
+   */
+  function loadConfig(url) {
+    const source = url || 'chroms.config.json';
+    if (typeof fetch !== 'function') {
+      return Promise.reject(
+        new Error('[Chroms] fetch is unavailable; pass a parsed object to new Game({ project })')
+      );
+    }
+    return fetch(source)
+      .then((response) => {
+        if (!response || response.ok === false) {
+          throw new Error('[Chroms] Could not load ' + source + ' (' + (response && response.status) + ')');
+        }
+        return response.json();
+      })
+      .then((data) => {
+        const result = validateConfig(data);
+        if (!result.ok) {
+          throw new Error('[Chroms] Invalid ' + source + ': ' + result.errors.join('; '));
+        }
+        result.config.warnings = result.warnings.slice();
+        if (result.warnings.length && typeof console !== 'undefined' && console.warn) {
+          console.warn('[Chroms] ' + result.warnings.join('; '));
+        }
+        return result.config;
+      });
+  }
+
+  Chroms.compareVersions = compareVersions;
+  Chroms.satisfies = satisfies;
+  Chroms.isCompatible = isCompatible;
+  Chroms.validateConfig = validateConfig;
+  Chroms.loadConfig = loadConfig;
+  Chroms.CONFIG_SCHEMA_VERSION = CONFIG_SCHEMA_VERSION;
+
 /* ---- 10-systems.js ---- */
   /**
    * Asset pipeline: images, audio, JSON, text, sprite sheets and texture atlases.
@@ -694,6 +962,8 @@
         this.audios[key] ||
         this.json[key] ||
         this.texts[key] ||
+        this.spritesheets[key] ||
+        this.atlases[key] ||
         null
       );
     }
@@ -839,10 +1109,13 @@
           const img = new Image();
           let data = null;
           let waiting = 2;
+          let failed = false;
           const finish = () => {
             waiting -= 1;
             if (waiting > 0) return;
-            if (!img || !data) {
+            // A decoded Image object exists even when loading failed; without
+            // this flag a broken texture was registered as a working atlas.
+            if (failed || !img || !data) {
               fail(new Error('Atlas data or image failed'));
               return;
             }
@@ -875,7 +1148,10 @@
             tick(item);
           };
           img.onload = finish;
-          img.onerror = () => finish();
+          img.onerror = () => {
+            failed = true;
+            finish();
+          };
           img.src = item.url;
           if (typeof item.dataOrUrl === 'string') {
             fetch(item.dataOrUrl)
@@ -885,6 +1161,7 @@
                 finish();
               })
               .catch(() => {
+                failed = true;
                 finish();
               });
           } else {
@@ -993,8 +1270,16 @@
         this.keys[e.code] = false;
       });
       on(global, 'blur', () => {
+        // A tab switch can swallow the keyup/pointerup events; drop the held
+        // state so keys, drags and justDown cannot stick.
         this.keys = {};
+        this.justPressed = {};
+        this.justReleased = {};
+        this.pointers.clear();
         this.pointer.isDown = false;
+        this.pointer.justDown = false;
+        this.pointer.justUp = false;
+        if (this._dragging) this._endDrag();
       });
 
       on(canvas, 'pointerdown', (e) => {
@@ -1269,8 +1554,6 @@
      */
     enableDrag(object, options) {
       object._dragOptions = options || {};
-      object._dragOptions.startX = object.x;
-      object._dragOptions.startY = object.y;
       if (this._dragTargets.indexOf(object) === -1) this._dragTargets.push(object);
       return object;
     }
@@ -1302,6 +1585,10 @@
             screen,
             offsetX: space.x - object.x,
             offsetY: space.y - object.y,
+            // Locked axes must hold the position from drag start, not the
+            // position the object had when enableDrag() was called.
+            startX: object.x,
+            startY: object.y,
             options: opts
           };
           object.isDragged = true;
@@ -1322,8 +1609,8 @@
       if (object.body) {
         object.body.setVelocity(0, 0);
       }
-      object.x = opts.dragX === false ? drag.options.startX : x;
-      object.y = opts.dragY === false ? drag.options.startY : y;
+      object.x = opts.dragX === false ? drag.startX : x;
+      object.y = opts.dragY === false ? drag.startY : y;
       if (opts.onDrag) opts.onDrag(object, this.pointer);
     }
     _endDrag() {
@@ -1412,6 +1699,7 @@
     }
     setSfxVolume(volume) {
       this.sfxVolume = MathUtils.clamp01(volume);
+      this._applyVolumes();
       return this;
     }
     setMusicVolume(volume) {
@@ -1452,7 +1740,8 @@
       }
       const audio = source.cloneNode(true);
       const baseVolume = opts.volume === undefined ? 1 : opts.volume;
-      const channel = opts.loop ? 'music' : opts.channel || 'sfx';
+      // An explicit channel wins; looped sounds default to the music channel.
+      const channel = opts.channel || (opts.loop ? 'music' : 'sfx');
       audio.volume = this.muted ? 0 : baseVolume * (channel === 'music' ? this.musicVolume : this.sfxVolume) * this.masterVolume;
       audio.loop = !!opts.loop;
       audio.playbackRate = opts.rate || 1;
@@ -1470,6 +1759,9 @@
           } catch (error) {
             /* ignore */
           }
+          // A fade envelope left over from stopMusic() would keep writing the
+          // volume of an audio element that is no longer playing.
+          this.owner._clearFades(this);
           const idx = this.owner.active.indexOf(this);
           if (idx !== -1) this.owner.active.splice(idx, 1);
         },
@@ -1554,8 +1846,17 @@
     }
     stopAll() {
       this.active.slice().forEach((handle) => handle.stop());
+      this.active = [];
+      this._fades = [];
       this.music = null;
       this.musicKey = null;
+      this._musicPaused = false;
+      return this;
+    }
+
+    _clearFades(handle) {
+      if (!this._fades.length) return this;
+      this._fades = this._fades.filter((fade) => fade.handle !== handle);
       return this;
     }
 
@@ -2255,7 +2556,10 @@
         return { axis, amount, direction };
       }
       if (a.immovable) {
-        b._moveBy(-direction * amount, axis === 'y' ? -direction * amount : 0);
+        b._moveBy(
+          axis === 'x' ? -direction * amount : 0,
+          axis === 'y' ? -direction * amount : 0
+        );
         if (axis === 'y' && b.velocity.y * direction > 0) {
           b.velocity.y = -b.velocity.y * b.bounce;
         }
@@ -2263,7 +2567,10 @@
           b.velocity.x = -b.velocity.x * b.bounce;
         }
       } else if (b.immovable) {
-        a._moveBy(direction * amount, axis === 'y' ? direction * amount : 0);
+        a._moveBy(
+          axis === 'x' ? direction * amount : 0,
+          axis === 'y' ? direction * amount : 0
+        );
         if (axis === 'y' && a.velocity.y * direction < 0) {
           a.velocity.y = -a.velocity.y * a.bounce;
         }
@@ -4297,7 +4604,7 @@
         }
         this.state = 'complete';
         if (this.onComplete) this.onComplete(this);
-        this.manager._remove(this);
+        this.manager._remove(this, true);
         return;
       }
       const value = this.direction === 1 ? progress : 1 - progress;
@@ -4327,7 +4634,7 @@
     stop() {
       if (this.state === 'complete') return this;
       this.state = 'complete';
-      this.manager._remove(this);
+      this.manager._remove(this, false);
       if (this.onStop) this.onStop(this);
       return this;
     }
@@ -4347,7 +4654,7 @@
       this.elapsed = this.duration;
       this.state = 'complete';
       if (this.onComplete) this.onComplete(this);
-      this.manager._remove(this);
+      this.manager._remove(this, true);
       return this;
     }
   }
@@ -4371,10 +4678,12 @@
       if (this.tweens.indexOf(tween) === -1) this.tweens.push(tween);
       return tween;
     }
-    _remove(tween) {
+    _remove(tween, completed) {
       const index = this.tweens.indexOf(tween);
       if (index !== -1) this.tweens.splice(index, 1);
-      this.events.emit('complete', tween);
+      this.events.emit('remove', tween);
+      // A killed tween is removed, not completed: do not report it as one.
+      if (completed) this.events.emit('complete', tween);
     }
     remove(tween) {
       return tween ? tween.stop() : this;
@@ -4452,7 +4761,7 @@
         });
         if (!alive && !tween.persist) {
           tween.state = 'complete';
-          this._remove(tween);
+          this._remove(tween, false);
           return;
         }
         tween.update(ms);
@@ -5051,6 +5360,8 @@
     setSize(width, height) {
       this.width = width;
       this.height = height;
+      // A smaller view can make the previously clamped position invalid.
+      this._clamp();
       return this;
     }
     resize(width, height) {
@@ -5919,6 +6230,8 @@
       this.tweens = new TweenManager(this);
       this.time = new TimerManager(this);
       this.storage = new SaveManager(cfg.storagePrefix || 'chroms');
+      this.project = null;
+      this.projectErrors = [];
       this.seed = cfg.seed;
       this.random = new Random(cfg.seed);
       this.plugins = {};
@@ -5987,6 +6300,8 @@
       this._registerLifecycle();
       this.resize();
 
+      if (cfg.project) this.setProjectConfig(cfg.project);
+
       (cfg.plugins || []).forEach((plugin) => this.use(plugin));
 
       const scenes = cfg.scenes || cfg.scene;
@@ -6050,7 +6365,33 @@
       if (scene) this._stopSceneInternal(scene);
       delete this.scenes[key];
       this.sceneOrder = this.sceneOrder.filter((item) => item !== key);
+      // A queued start for a removed scene would otherwise resurrect it.
+      this._sceneQueue = this._sceneQueue.filter((entry) => entry.scene.key !== key);
       return this;
+    }
+
+    /**
+     * Attach project metadata (a parsed `chroms.config.json`). Invalid fields
+     * are reported in `game.projectErrors`; an engine-version mismatch only
+     * warns. Emits `project-config` (or `project-warning`).
+     */
+    setProjectConfig(data) {
+      const result = validateConfig(data);
+      this.project = result.config;
+      this.projectErrors = result.errors.slice();
+      if (result.errors.length) {
+        console.warn('[Chroms] Invalid project config: ' + result.errors.join('; '));
+      }
+      if (result.warnings.length) {
+        console.warn('[Chroms] ' + result.warnings.join('; '));
+        this.events.emit('project-warning', result.warnings, this.project);
+      }
+      this.events.emit('project-config', this.project);
+      return this.project;
+    }
+    /** The normalized project metadata, or null when none was provided. */
+    getProjectConfig() {
+      return this.project;
     }
 
     /** True while the scene (or the current one) is in the active stack. */
@@ -6083,6 +6424,8 @@
       if (!target || this.sceneStack.indexOf(target) === -1) return this;
       this.sceneStack = this.sceneStack.filter((item) => item !== target);
       this.sceneStack.unshift(target);
+      // Sending the top scene to the back makes the next scene current.
+      this.currentScene = this._topScene();
       this.events.emit('scene-sent-to-back', this.scenes[target] || null);
       return this;
     }
@@ -6663,7 +7006,7 @@
 
     /** Machine-readable engine summary (same payload as `Chroms.describe()`). */
     describe() {
-      return buildManifest();
+      return buildManifest(this.project);
     }
 
     destroy() {
@@ -6683,10 +7026,17 @@
   }
 
   /** Machine-readable summary for humans, tools and LLM agents. */
-  function buildManifest() {
+  function buildManifest(project) {
     return {
       name: 'Chroms',
       version: VERSION,
+      project: project || null,
+      config: {
+        file: 'chroms.config.json',
+        fields: ['name', 'version', 'engine', 'description', 'author', 'license', 'homepage', 'entry', 'keywords'],
+        api: 'Chroms.loadConfig(url), Chroms.validateConfig(data), new Chroms.Game({ project }) -> game.project',
+        engineRange: 'engine accepts 1.2.3, ^1.2, ~1.2.3, >=1.2.0, 1.x or *'
+      },
       runtime: 'browser',
       renderer: 'Canvas 2D',
       inspiration:
@@ -6821,7 +7171,7 @@
   });
 
   Chroms.describe = function describe() {
-    return buildManifest();
+    return buildManifest(null);
   };
 
   global.Chroms = Chroms;

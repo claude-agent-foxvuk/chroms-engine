@@ -1,5 +1,5 @@
 /**
- * Chroms Engine v1.2.2
+ * Chroms Engine v1.2.3
  * A modular 2D game engine for the browser, designed for humans and AI agents.
  * The API is inspired by Phaser 3: Scene subclasses, an `add` factory, groups,
  * tweens, timers and a camera, reimplemented for Canvas 2D with no dependencies.
@@ -10,7 +10,7 @@
 (function (global) {
   'use strict';
 
-  const VERSION = '1.2.2';
+  const VERSION = '1.2.3';
   let _uid = 0;
 
   function uid(prefix) {
@@ -285,7 +285,12 @@
       const list = this._listeners[event];
       if (!list || list.length === 0) return false;
       for (const entry of list.slice()) {
-        if (entry.once) this.off(event, entry.handler, entry.context);
+        if (entry.once) {
+          // Remove this exact entry: off() would also drop a persistent
+          // listener registered with the same function and context.
+          const index = list.indexOf(entry);
+          if (index !== -1) list.splice(index, 1);
+        }
         entry.handler.apply(entry.context || this, args);
       }
       return true;

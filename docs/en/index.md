@@ -1,4 +1,4 @@
-# Chroms Engine v1.2.2 — documentation
+# Chroms Engine v1.2.3 — documentation
 
 Chroms is a dependency-free 2D engine for the browser. It draws with Canvas 2D, ships as a single `chroms.js`, and keeps gameplay code in `Scene` subclasses.
 
@@ -123,6 +123,8 @@ Russian translation: [`../ru/index.md`](../ru/index.md).
 
 **1.2.0 additions** — multiple active scenes (`scene.launch`, `bringToTop`, `isActive`, `game.getActiveScenes`), collision groups/masks (`setCollisionGroup`, `setCollidesWith`, `setCollisionMatrix`), UI widgets (`add.slider`, `add.progressBar`, `add.toggle`), `add.polygon`, `sprite.setTint`, `object.setInteractive` with pointer events, key chords, `repeatDelay` and color tweens, `storage.export/import`, `musicPause/musicResume`, tilemap object layers, `physics.moveTo`.
 
+**1.2.3 additions** — project manifests (`chroms.config.json`, `Chroms.loadConfig`, `Chroms.validateConfig`, `game.project`), version range helpers (`Chroms.satisfies`, `Chroms.compareVersions`, `Chroms.isCompatible`) and the fixes listed below.
+
 **1.2.2 fixes** — pointer input respects scene status and `scene.blockInput`, hit tests and drags follow `Container` transforms, `wake()` restores a paused scene, cancelled fades and pans clear their references, `Tween.stop()` calls `onStop`, scene starts during loading are queued, and the error overlay resets the canvas transform before drawing.
 
 **1.2.1 fixes** — a slept scene renders again after a restart, `camera.panTo()` outranks an active `follow()`, the music-paused flag no longer sticks to a stopped track, `body.scene` follows `object.addTo()` and stopped or finished animations leave the animation registry.
@@ -145,6 +147,48 @@ Chroms targets current evergreen browsers. It deliberately stays small:
 - All active scenes share one physics world and one input pointer; `input.pointer.worldX/worldY` belongs to the last scene updated in the frame.
 - Only running scenes receive pointer input. `game.pause()` disables widget and `setInteractive` input too, and `scene.setBlockInput(true)` blocks every scene below it.
 
+## Project metadata
+
+A project describes itself in `chroms.config.json` next to its entry page — the same idea as `package.json` or `Cargo.toml`, but for a browser game that is loaded as one script:
+
+```json
+{
+  "configVersion": 1,
+  "name": "my-game",
+  "version": "0.1.0",
+  "engine": "^1.2.3",
+  "description": "A small arena shooter",
+  "author": "Jane Doe <jane@example.com>",
+  "license": "MIT",
+  "homepage": "https://example.com/my-game",
+  "entry": "index.html",
+  "keywords": ["arena", "shooter"]
+}
+```
+
+`engine` is the Chroms version the project was built against. It accepts an exact version (`1.2.3`) or a range (`^1.2`, `~1.2.3`, `>=1.2.0`, `1.x`, `*`). The rest is ordinary package metadata; `name` and `engine` are required and everything else is optional.
+
+```javascript
+// Fetch and validate the manifest, then hand it to the game.
+Chroms.loadConfig('chroms.config.json').then((project) => {
+  const game = new Chroms.Game({
+    width: 800,
+    height: 600,
+    project,            // exposed as game.project, included in game.describe()
+    scene: [MainScene]
+  });
+  console.log(game.project.name, game.project.engine);
+});
+
+// Or validate an object you already parsed (loader.json / bundler import).
+const result = Chroms.validateConfig({ name: 'my-game', engine: '^1.2.3' });
+result.ok;         // true
+result.errors;     // []
+result.warnings;   // [] or ['project targets Chroms ^2.0.0 but this build is 1.2.3; …']
+```
+
+An engine-version mismatch never blocks the game: `loadConfig` warns, `game.events.emit('project-config')` fires, and `game.projectErrors` holds schema errors. Use the version helpers directly for your own checks: `Chroms.satisfies('1.2.3', '^1.2')`, `Chroms.compareVersions('1.2.0', '1.2.3')` and `Chroms.isCompatible('^1.2.3')`.
+
 ## Version
 
-Current version: **1.2.2**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.
+Current version: **1.2.3**. `Chroms.version` and `Chroms.VERSION` expose it at runtime.

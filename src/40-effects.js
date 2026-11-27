@@ -171,7 +171,7 @@
         }
         this.state = 'complete';
         if (this.onComplete) this.onComplete(this);
-        this.manager._remove(this);
+        this.manager._remove(this, true);
         return;
       }
       const value = this.direction === 1 ? progress : 1 - progress;
@@ -201,7 +201,7 @@
     stop() {
       if (this.state === 'complete') return this;
       this.state = 'complete';
-      this.manager._remove(this);
+      this.manager._remove(this, false);
       if (this.onStop) this.onStop(this);
       return this;
     }
@@ -221,7 +221,7 @@
       this.elapsed = this.duration;
       this.state = 'complete';
       if (this.onComplete) this.onComplete(this);
-      this.manager._remove(this);
+      this.manager._remove(this, true);
       return this;
     }
   }
@@ -245,10 +245,12 @@
       if (this.tweens.indexOf(tween) === -1) this.tweens.push(tween);
       return tween;
     }
-    _remove(tween) {
+    _remove(tween, completed) {
       const index = this.tweens.indexOf(tween);
       if (index !== -1) this.tweens.splice(index, 1);
-      this.events.emit('complete', tween);
+      this.events.emit('remove', tween);
+      // A killed tween is removed, not completed: do not report it as one.
+      if (completed) this.events.emit('complete', tween);
     }
     remove(tween) {
       return tween ? tween.stop() : this;
@@ -326,7 +328,7 @@
         });
         if (!alive && !tween.persist) {
           tween.state = 'complete';
-          this._remove(tween);
+          this._remove(tween, false);
           return;
         }
         tween.update(ms);
